@@ -17,6 +17,7 @@ package com.ichi2.anki
 
 import android.annotation.SuppressLint
 import android.util.Log
+import com.ichi2.anki.logging.ProductionCrashReportingTree
 import com.ichi2.testutils.AnkiAssert
 import org.hamcrest.MatcherAssert.assertThat
 import org.hamcrest.Matchers.equalTo
@@ -25,7 +26,9 @@ import org.junit.Assert
 import org.junit.Before
 import org.junit.Test
 import org.mockito.MockedStatic
-import org.mockito.Mockito.*
+import org.mockito.Mockito.any
+import org.mockito.Mockito.anyString
+import org.mockito.Mockito.mockStatic
 import org.mockito.kotlin.whenever
 import timber.log.Timber
 import java.lang.Exception
@@ -35,9 +38,8 @@ import java.lang.RuntimeException
 class ProductionCrashReportingTreeTest {
     @Before
     fun setUp() {
-
         // setup - simply instrument the class and do same log init as production
-        Timber.plant(AnkiDroidApp.ProductionCrashReportingTree())
+        Timber.plant(ProductionCrashReportingTree())
     }
 
     @After
@@ -58,9 +60,8 @@ class ProductionCrashReportingTreeTest {
             whenever(Log.d(anyString(), anyString(), any()))
                 .thenThrow(RuntimeException("Debug logging should be ignored"))
             whenever(
-                Log.i(anyString(), anyString(), any())
-            )
-                .thenThrow(RuntimeException("Info logging should throw!"))
+                Log.i(anyString(), anyString(), any()),
+            ).thenThrow(RuntimeException("Info logging should throw!"))
 
             // now call our wrapper - if it hits the platform logger it will throw
             AnkiAssert.assertDoesNotThrow { Timber.v("verbose") }
@@ -83,11 +84,10 @@ class ProductionCrashReportingTreeTest {
      */
     @Test
     fun testProductionLogTag() {
-
         var testWithProperClassNameCalled = false
+
         // this is required to ensure 'NativeMethodAccessorImpl' isn't the class name
         fun testWithProperClassName(autoClosed: MockedStatic<Log>) {
-
             // Now let's run through our API calls...
             Timber.i("info level message")
             Timber.w("warn level message")
@@ -102,14 +102,14 @@ class ProductionCrashReportingTreeTest {
                 Log.w(
                     AnkiDroidApp.TAG,
                     this.javaClass.simpleName + "/ " + "warn level message",
-                    null
+                    null,
                 )
             }
             autoClosed.verify {
                 Log.e(
                     AnkiDroidApp.TAG,
                     this.javaClass.simpleName + "/ " + "error level message",
-                    null
+                    null,
                 )
             }
             testWithProperClassNameCalled = true

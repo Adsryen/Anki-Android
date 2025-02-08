@@ -17,7 +17,6 @@
 package com.ichi2.libanki
 
 import anki.collection.OpChangesAfterUndo
-import net.ankiweb.rsdroid.RustCleanup
 import anki.collection.UndoStatus as UndoStatusProto
 
 /**
@@ -27,16 +26,15 @@ data class UndoStatus(
     val undo: String?,
     val redo: String?,
     // not currently used
-    val lastStep: Int
+    val lastStep: Int,
 ) {
     companion object {
-        fun from(proto: UndoStatusProto): UndoStatus {
-            return UndoStatus(
+        fun from(proto: UndoStatusProto): UndoStatus =
+            UndoStatus(
                 undo = proto.undo.ifEmpty { null },
                 redo = proto.redo.ifEmpty { null },
-                lastStep = proto.lastStep
+                lastStep = proto.lastStep,
             )
-        }
     }
 }
 
@@ -49,25 +47,12 @@ data class UndoStatus(
  * Will throw if no undo operation is possible (due to legacy code
  * directly mutating the database).
  */
-@RustCleanup("Once fully migrated, and v2 scheduler dropped, rename to undo()")
-fun CollectionV16.undoNew(): OpChangesAfterUndo {
-    val changes = backend.undo()
-    // clear legacy undo log
-    clearUndo()
-    return changes
-}
+fun Collection.undo(): OpChangesAfterUndo = backend.undo()
 
 /** Redoes the previously-undone operation. See the docs for
-[CollectionV16.undoOperation]
+[Collection.undoOperation]
  */
-fun CollectionV16.redo(): OpChangesAfterUndo {
-    val changes = backend.redo()
-    // clear legacy undo log
-    clearUndo()
-    return changes
-}
+fun Collection.redo(): OpChangesAfterUndo = backend.redo()
 
 /** See [UndoStatus] */
-fun CollectionV16.undoStatus(): UndoStatus {
-    return UndoStatus.from(backend.getUndoStatus())
-}
+fun Collection.undoStatus(): UndoStatus = UndoStatus.from(backend.getUndoStatus())

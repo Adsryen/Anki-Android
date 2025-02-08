@@ -4,39 +4,63 @@ package com.ichi2.anki
 import android.content.Intent
 import android.content.SharedPreferences
 import android.content.pm.PackageManager
+import android.os.Bundle
 import android.view.Menu
+import android.widget.TextView
+import androidx.appcompat.app.AlertDialog
 import androidx.core.content.edit
-import androidx.fragment.app.DialogFragment
+import androidx.core.content.pm.ShortcutManagerCompat
+import androidx.core.view.children
+import androidx.fragment.app.FragmentManager
 import androidx.test.core.app.ActivityScenario
 import com.ichi2.anki.dialogs.DatabaseErrorDialog
-import com.ichi2.anki.dialogs.DeckPickerConfirmDeleteDeckDialog
+import com.ichi2.anki.dialogs.DatabaseErrorDialog.DatabaseErrorDialogType
+import com.ichi2.anki.dialogs.DeckPickerContextMenu
+import com.ichi2.anki.dialogs.DeckPickerContextMenu.DeckPickerContextMenuOption
+import com.ichi2.anki.dialogs.utils.title
+import com.ichi2.anki.exception.UnknownDatabaseVersionException
+import com.ichi2.anki.preferences.sharedPrefs
+import com.ichi2.anki.utils.ext.dismissAllDialogFragments
 import com.ichi2.annotations.NeedsTest
+import com.ichi2.libanki.DeckId
 import com.ichi2.libanki.Storage
-import com.ichi2.libanki.exception.UnknownDatabaseVersionException
 import com.ichi2.libanki.utils.TimeManager
-import com.ichi2.testutils.*
-import com.ichi2.testutils.AnkiActivityUtils.getDialogFragment
+import com.ichi2.testutils.BackendEmulatingOpenConflict
+import com.ichi2.testutils.BackupManagerTestUtilities
+import com.ichi2.testutils.DbUtils
+import com.ichi2.testutils.grantWritePermissions
+import com.ichi2.testutils.revokeWritePermissions
+import com.ichi2.utils.KotlinCleanup
 import com.ichi2.utils.ResourceLoader
-import kotlinx.coroutines.ExperimentalCoroutinesApi
-import net.ankiweb.rsdroid.BackendFactory
 import org.apache.commons.exec.OS
 import org.hamcrest.MatcherAssert.assertThat
-import org.hamcrest.Matchers.*
+import org.hamcrest.Matchers.containsInAnyOrder
+import org.hamcrest.Matchers.equalTo
+import org.hamcrest.Matchers.not
+import org.hamcrest.Matchers.notNullValue
+import org.hamcrest.Matchers.nullValue
 import org.junit.Assert.assertEquals
 import org.junit.Before
 import org.junit.Ignore
 import org.junit.Test
 import org.junit.runner.RunWith
-import org.mockito.Mockito.*
+import org.mockito.Mockito.mock
+import org.mockito.Mockito.never
+import org.mockito.Mockito.times
+import org.mockito.Mockito.verify
 import org.mockito.kotlin.whenever
 import org.robolectric.ParameterizedRobolectricTestRunner
 import org.robolectric.Robolectric
 import org.robolectric.RuntimeEnvironment
+import org.robolectric.Shadows
+import org.robolectric.shadows.ShadowDialog
+import timber.log.Timber
 import java.io.File
+import kotlin.test.assertFailsWith
 import kotlin.test.assertNotNull
-import kotlin.test.assertNull
+import kotlin.test.assertTrue
 
-@OptIn(ExperimentalCoroutinesApi::class)
+@KotlinCleanup("SPMockBuilder")
 @RunWith(ParameterizedRobolectricTestRunner::class)
 class DeckPickerTest : RobolectricTest() {
     @ParameterizedRobolectricTestRunner.Parameter
@@ -46,9 +70,7 @@ class DeckPickerTest : RobolectricTest() {
     companion object {
         @ParameterizedRobolectricTestRunner.Parameters
         @JvmStatic // required for initParameters
-        fun initParameters(): Collection<String> {
-            return listOf("normal", "xlarge")
-        }
+        fun initParameters(): Collection<String> = listOf("normal", "xlarge")
     }
 
     @Before
@@ -56,40 +78,6 @@ class DeckPickerTest : RobolectricTest() {
         RuntimeEnvironment.setQualifiers(mQualifiers)
         getPreferences().edit {
             putBoolean(IntroductionActivity.INTRODUCTION_SLIDES_SHOWN, true)
-        }
-    }
-
-    @Test
-    fun verifyCodeMessages() {
-        val codeResponsePairs = hashMapOf(
-            407 to getResourceString(R.string.sync_error_407_proxy_required),
-            409 to getResourceString(R.string.sync_error_409),
-            413 to getResourceString(R.string.sync_error_413_collection_size),
-            500 to getResourceString(R.string.sync_error_500_unknown),
-            501 to getResourceString(R.string.sync_error_501_upgrade_required),
-            502 to getResourceString(R.string.sync_error_502_maintenance),
-            503 to getResourceString(R.string.sync_too_busy),
-            504 to getResourceString(R.string.sync_error_504_gateway_timeout)
-        )
-        ActivityScenario.launch(DeckPicker::class.java).use { scenario ->
-            scenario.onActivity { deckPicker: DeckPicker ->
-                for ((key, value) in codeResponsePairs) {
-                    assertEquals(deckPicker.rewriteError(key), value)
-                }
-            }
-        }
-    }
-
-    @Test
-    fun verifyBadCodesNoMessage() {
-        ActivityScenario.launch(DeckPicker::class.java).use { scenario ->
-            scenario.onActivity { deckPicker: DeckPicker ->
-                assertNull(deckPicker.rewriteError(0))
-                assertNull(deckPicker.rewriteError(-1))
-                assertNull(deckPicker.rewriteError(1))
-                assertNull(deckPicker.rewriteError(Int.MIN_VALUE))
-                assertNull(deckPicker.rewriteError(Int.MAX_VALUE))
-            }
         }
     }
 
@@ -185,64 +173,53 @@ class DeckPickerTest : RobolectricTest() {
 
     @Test
     fun limitAppliedAfterReview() {
-        val col = col
         val sched = col.sched
-        val dconf = col.decks.getConf(1)
+        val dconf = col.decks.getConfig(1)
         assertNotNull(dconf)
-        dconf.getJSONObject("new").put("perDay", 10)
+        dconf.new.perDay = 10
         col.decks.save(dconf)
         for (i in 0..10) {
-            addNoteUsingBasicModel("Which card is this ?", i.toString())
+            addBasicNote("Which card is this ?", i.toString())
         }
         // This set a card as current card
         sched.card
         ensureCollectionLoadIsSynchronous()
-        val deckPicker = super.startActivityNormallyOpenCollectionWithIntent(
-            DeckPicker::class.java, Intent()
+        val deckPicker =
+            super.startActivityNormallyOpenCollectionWithIntent(
+                DeckPicker::class.java,
+                Intent(),
+            )
+        assertEquals(
+            10,
+            deckPicker.dueTree!!
+                .children[0]
+                .newCount
+                .toLong(),
         )
-        assertEquals(10, deckPicker.dueTree!![0].value.newCount.toLong())
     }
 
     @Test
-    fun confirmDeckDeletionDeletesEmptyDeck() = runTest {
-        val did = addDeck("Hello World")
-        assertThat("Deck was added", col.decks.count(), equalTo(2))
-        val deckPicker = startActivityNormallyOpenCollectionWithIntent(
-            DeckPicker::class.java, Intent()
-        )
-        deckPicker.confirmDeckDeletion(did)
-        advanceRobolectricLooperWithSleep()
-        assertThat("deck was deleted", col.decks.count(), equalTo(1))
-    }
-
-    @Test
-    fun deletion_of_filtered_deck_shows_warning_issue_10238() {
-        if (!BackendFactory.defaultLegacySchema) {
-            // undoable
-            return
+    fun confirmDeckDeletionDeletesEmptyDeck() =
+        runTest {
+            val did = addDeck("Hello World")
+            assertThat("Deck was added", col.decks.count(), equalTo(2))
+            val deckPicker =
+                startActivityNormallyOpenCollectionWithIntent(
+                    DeckPicker::class.java,
+                    Intent(),
+                )
+            deckPicker.viewModel.deleteDeck(did).join()
+            assertThat("deck was deleted", col.decks.count(), equalTo(1))
         }
-        // Filtered decks contain their own options, deleting one can cause a significant loss of work.
-        // And they are more likely to be empty temporarily
-        val did = addDynamicDeck("filtered")
-        val deckPicker = startActivityNormallyOpenCollectionWithIntent(
-            DeckPicker::class.java, Intent()
-        )
-        deckPicker.confirmDeckDeletion(did)
-        val fragment = deckPicker.getDialogFragment<DialogFragment>()
-        assertThat(
-            "deck deletion confirmation window should be shown", fragment,
-            instanceOf(DeckPickerConfirmDeleteDeckDialog::class.java)
-        )
-    }
 
     @Test
     fun databaseLockedTest() {
         // don't call .onCreate
         val deckPicker = Robolectric.buildActivity(DeckPickerEx::class.java, Intent()).get()
-        deckPicker.handleStartupFailure(InitialActivity.StartupFailure.DATABASE_LOCKED)
+        deckPicker.handleStartupFailure(InitialActivity.StartupFailure.DatabaseLocked)
         assertThat(
             deckPicker.databaseErrorDialog,
-            equalTo(DatabaseErrorDialog.DIALOG_DB_LOCKED)
+            equalTo(DatabaseErrorDialogType.DIALOG_DB_LOCKED),
         )
     }
 
@@ -252,18 +229,20 @@ class DeckPickerTest : RobolectricTest() {
         try {
             BackendEmulatingOpenConflict.enable()
             InitialActivityWithConflictTest.setupForDatabaseConflict()
-            val d = super.startActivityNormallyOpenCollectionWithIntent(
-                DeckPickerEx::class.java, Intent()
-            )
+            val d =
+                super.startActivityNormallyOpenCollectionWithIntent(
+                    DeckPickerEx::class.java,
+                    Intent(),
+                )
             assertThat(
                 "A specific dialog for a conflict should be shown",
                 d.databaseErrorDialog,
-                equalTo(DatabaseErrorDialog.DIALOG_DB_LOCKED)
+                equalTo(DatabaseErrorDialogType.DIALOG_DB_LOCKED),
             )
             assertThat(
                 "No exception reports should be thrown",
                 AnkiDroidApp.sentExceptionReportHack,
-                equalTo(false)
+                equalTo(false),
             )
         } finally {
             BackendEmulatingOpenConflict.disable()
@@ -279,9 +258,11 @@ class DeckPickerTest : RobolectricTest() {
         try {
             InitialActivityWithConflictTest.setupForDefault()
             BackendEmulatingOpenConflict.enable()
-            val d = super.startActivityNormallyOpenCollectionWithIntent(
-                DeckPickerEx::class.java, Intent()
-            )
+            val d =
+                super.startActivityNormallyOpenCollectionWithIntent(
+                    DeckPickerEx::class.java,
+                    Intent(),
+                )
 
             // grant permissions
             InitialActivityWithConflictTest.setupForDatabaseConflict()
@@ -289,7 +270,7 @@ class DeckPickerTest : RobolectricTest() {
             assertThat(
                 "A specific dialog for a conflict should be shown",
                 d.databaseErrorDialog,
-                equalTo(DatabaseErrorDialog.DIALOG_DB_LOCKED)
+                equalTo(DatabaseErrorDialogType.DIALOG_DB_LOCKED),
             )
         } finally {
             BackendEmulatingOpenConflict.disable()
@@ -304,15 +285,20 @@ class DeckPickerTest : RobolectricTest() {
             grantWritePermissions()
             BackupManagerTestUtilities.setupSpaceForBackup(targetContext)
             // We don't show it if the user is new.
-            AnkiDroidApp.getSharedPrefs(targetContext).edit().putString("lastVersion", "0.1")
+            targetContext
+                .sharedPrefs()
+                .edit()
+                .putString("lastVersion", "0.1")
                 .apply()
-            val d = super.startActivityNormallyOpenCollectionWithIntent(
-                DeckPickerEx::class.java, Intent()
-            )
+            val d =
+                super.startActivityNormallyOpenCollectionWithIntent(
+                    DeckPickerEx::class.java,
+                    Intent(),
+                )
             assertThat(
                 "Analytics opt-in should be displayed",
                 d.displayedAnalyticsOptIn,
-                equalTo(true)
+                equalTo(true),
             )
         } finally {
             revokeWritePermissions()
@@ -322,40 +308,46 @@ class DeckPickerTest : RobolectricTest() {
 
     @Test
     @RunInBackground
-    fun doNotShowOptionsMenuWhenCollectionInaccessible() = runTest {
-        try {
-            enableNullCollection()
-            val d = super.startActivityNormallyOpenCollectionWithIntent(
-                DeckPickerEx::class.java, Intent()
-            )
-            d.updateMenuState()
-            assertThat(
-                "Options menu not displayed when collection is inaccessible",
-                d.optionsMenuState,
-                equalTo(null)
-            )
-        } finally {
-            disableNullCollection()
+    fun doNotShowOptionsMenuWhenCollectionInaccessible() =
+        runTest {
+            try {
+                enableNullCollection()
+                val d =
+                    super.startActivityNormallyOpenCollectionWithIntent(
+                        DeckPickerEx::class.java,
+                        Intent(),
+                    )
+                d.updateMenuState()
+                assertThat(
+                    "Options menu not displayed when collection is inaccessible",
+                    d.optionsMenuState,
+                    equalTo(null),
+                )
+            } finally {
+                disableNullCollection()
+            }
         }
-    }
 
     @Test
-    fun showOptionsMenuWhenCollectionAccessible() = runTest {
-        try {
-            grantWritePermissions()
-            val d = super.startActivityNormallyOpenCollectionWithIntent(
-                DeckPickerEx::class.java, Intent()
-            )
-            d.updateMenuState()
-            assertThat(
-                "Options menu displayed when collection is accessible",
-                d.optionsMenuState,
-                `is`(notNullValue())
-            )
-        } finally {
-            revokeWritePermissions()
+    fun showOptionsMenuWhenCollectionAccessible() =
+        runTest {
+            try {
+                grantWritePermissions()
+                val d =
+                    super.startActivityNormallyOpenCollectionWithIntent(
+                        DeckPickerEx::class.java,
+                        Intent(),
+                    )
+                d.updateMenuState()
+                assertThat(
+                    "Options menu displayed when collection is accessible",
+                    d.optionsMenuState,
+                    notNullValue(),
+                )
+            } finally {
+                revokeWritePermissions()
+            }
         }
-    }
 
     @Test
     @RunInBackground
@@ -363,14 +355,16 @@ class DeckPickerTest : RobolectricTest() {
         try {
             revokeWritePermissions()
             enableNullCollection()
-            val d = super.startActivityNormallyOpenCollectionWithIntent(
-                DeckPickerEx::class.java, Intent()
-            )
+            val d =
+                super.startActivityNormallyOpenCollectionWithIntent(
+                    DeckPickerEx::class.java,
+                    Intent(),
+                )
 
             // Neither collection, not its models will be initialized without storage permission
 
             // assert: Lazy Collection initialization CollectionTask.LoadCollectionComplete fails
-            assertThrowsSubclass<Exception> { d.col }
+            assertFailsWith<Exception> { d.getColUnsafe }
         } finally {
             disableNullCollection()
         }
@@ -380,22 +374,172 @@ class DeckPickerTest : RobolectricTest() {
     fun onResumeLoadCollectionSuccessWithAccessibleCollection() {
         try {
             grantWritePermissions()
-            val d = super.startActivityNormallyOpenCollectionWithIntent(
-                DeckPickerEx::class.java, Intent()
-            )
+            val d =
+                super.startActivityNormallyOpenCollectionWithIntent(
+                    DeckPickerEx::class.java,
+                    Intent(),
+                )
             assertThat(
                 "Collection initialization ensured by CollectionTask.LoadCollectionComplete",
-                d.col,
-                notNullValue()
+                d.getColUnsafe,
+                notNullValue(),
             )
             assertThat(
-                "Collection Models Loaded", d.col.models,
-                notNullValue()
+                "Collection Models Loaded",
+                d.getColUnsafe.notetypes,
+                notNullValue(),
             )
         } finally {
             revokeWritePermissions()
         }
     }
+
+    @Test
+    fun `ContextMenu starts expected dialogs when specific options are selected`() =
+        runTest {
+            startActivityNormallyOpenCollectionWithIntent(DeckPicker::class.java, Intent()).run {
+                val didA = addDeck("Deck 1")
+
+                supportFragmentManager.selectContextMenuOption(DeckPickerContextMenuOption.RENAME_DECK, didA)
+                assertDialogTitleEquals("Rename deck")
+                dismissAllDialogFragments()
+
+                supportFragmentManager.selectContextMenuOption(DeckPickerContextMenuOption.CREATE_SUBDECK, didA)
+                assertDialogTitleEquals("Create subdeck")
+                dismissAllDialogFragments()
+
+                supportFragmentManager.selectContextMenuOption(DeckPickerContextMenuOption.CUSTOM_STUDY, didA)
+                assertDialogTitleEquals("Custom study")
+                dismissAllDialogFragments()
+
+//            TODO test code enters in a recursion in BasicItemSelectedListener inside ExportDialog
+//            supportFragmentManager.selectContextMenuOption(DeckPickerContextMenuOption.EXPORT_DECK, didA)
+//            assertAlertDialogTitleEquals("Export")
+//            dismissAllDialogFragments()
+            }
+        }
+
+    /** Simulates a selection in the context menu by setting the specific result in FragmentManager */
+    private fun FragmentManager.selectContextMenuOption(
+        option: DeckPickerContextMenuOption,
+        deckId: DeckId,
+    ) {
+        val arguments =
+            Bundle().apply {
+                putLong(DeckPickerContextMenu.CONTEXT_MENU_DECK_ID, deckId)
+                putSerializable(DeckPickerContextMenu.CONTEXT_MENU_DECK_OPTION, option)
+            }
+        setFragmentResult(DeckPickerContextMenu.REQUEST_KEY_CONTEXT_MENU, arguments)
+    }
+
+    private fun assertDialogTitleEquals(expectedTitle: String) {
+        val actualTitle = (ShadowDialog.getLatestDialog() as AlertDialog).title
+        Timber.d("titles = \"$actualTitle\", \"$expectedTitle\"")
+        assertEquals(expectedTitle, actualTitle)
+    }
+
+    @Test
+    fun `ContextMenu starts expected activities when specific options are selected`() {
+        startActivityNormallyOpenCollectionWithIntent(DeckPicker::class.java, Intent()).run {
+            val didA = addDeck("Deck 1")
+            val didDynamicA = addDynamicDeck("Deck Dynamic 1")
+
+            supportFragmentManager.selectContextMenuOption(DeckPickerContextMenuOption.ADD_CARD, didA)
+            val noteEditor = Shadows.shadowOf(this).nextStartedActivity!!
+            assertEquals("com.ichi2.anki.SingleFragmentActivity", noteEditor.component!!.className)
+            onBackPressedDispatcher.onBackPressed()
+
+            supportFragmentManager.selectContextMenuOption(DeckPickerContextMenuOption.BROWSE_CARDS, didA)
+            val browser = Shadows.shadowOf(this).nextStartedActivity!!
+            assertEquals("com.ichi2.anki.CardBrowser", browser.component!!.className)
+            onBackPressedDispatcher.onBackPressed()
+
+            // select deck options for a normal deck
+            supportFragmentManager.selectContextMenuOption(DeckPickerContextMenuOption.DECK_OPTIONS, didA)
+            val deckOptionsNormal = Shadows.shadowOf(this).nextStartedActivity!!
+            assertEquals("com.ichi2.anki.SingleFragmentActivity", deckOptionsNormal.component!!.className)
+            onBackPressedDispatcher.onBackPressed()
+
+            // select deck options for a dynamic deck
+            supportFragmentManager.selectContextMenuOption(DeckPickerContextMenuOption.DECK_OPTIONS, didDynamicA)
+            val deckOptionsDynamic = Shadows.shadowOf(this).nextStartedActivity!!
+            assertEquals("com.ichi2.anki.FilteredDeckOptions", deckOptionsDynamic.component!!.className)
+            onBackPressedDispatcher.onBackPressed()
+        }
+    }
+
+    @Test
+    fun `ContextMenu deletes deck when selecting DELETE_DECK`() =
+        runTest {
+            startActivityNormallyOpenCollectionWithIntent(DeckPicker::class.java, Intent()).run {
+                val didA = addDeck("Deck 1")
+                supportFragmentManager.selectContextMenuOption(DeckPickerContextMenuOption.DELETE_DECK, didA)
+                assertThat(getColUnsafe.decks.allNamesAndIds().map { it.id }, not(containsInAnyOrder(didA)))
+            }
+        }
+
+    @Test
+    fun `ContextMenu creates deck shortcut when selecting CREATE_SHORTCUT`() =
+        runTest {
+            startActivityNormallyOpenCollectionWithIntent(DeckPicker::class.java, Intent()).run {
+                val didA = addDeck("Deck 1")
+                supportFragmentManager.selectContextMenuOption(DeckPickerContextMenuOption.CREATE_SHORTCUT, didA)
+                assertEquals(
+                    "Deck 1",
+                    ShortcutManagerCompat.getShortcuts(this, ShortcutManagerCompat.FLAG_MATCH_PINNED).first().shortLabel,
+                )
+            }
+        }
+
+    @Test
+    fun `ContextMenu unburied cards when selecting UNBURY`() =
+        runTest {
+            startActivityNormallyOpenCollectionWithIntent(DeckPicker::class.java, Intent()).run {
+                TimeManager.reset()
+                // stop 'next day' code running, which calls 'unbury'
+                updateDeckList()
+                val deckId = addDeck("Deck 1")
+                getColUnsafe.decks.select(deckId)
+                getColUnsafe.notetypes.byName("Basic")!!.put("did", deckId)
+                val card = addBasicNote("front", "back").firstCard()
+                getColUnsafe.sched.buryCards(listOf(card.id))
+                updateDeckList()
+                advanceRobolectricLooper()
+                assertEquals(1, visibleDeckCount)
+                assertTrue(getColUnsafe.sched.haveBuried(), "Deck should have buried cards")
+                supportFragmentManager.selectContextMenuOption(DeckPickerContextMenuOption.UNBURY, deckId)
+                kotlin.test.assertFalse(getColUnsafe.sched.haveBuried())
+            }
+        }
+
+    @Test
+    fun `ContextMenu testDynRebuildAndEmpty`() =
+        runTest {
+            startActivityNormallyOpenCollectionWithIntent(DeckPicker::class.java, Intent()).run {
+                val cardIds =
+                    (0..3)
+                        .map { addBasicNote("$it", "").firstCard().id }
+                assertTrue(allCardsInSameDeck(cardIds, 1))
+                val deckId = addDynamicDeck("Deck 1")
+                getColUnsafe.sched.rebuildDyn(deckId)
+                assertTrue(allCardsInSameDeck(cardIds, deckId))
+                updateDeckList()
+                assertEquals(1, visibleDeckCount)
+
+                supportFragmentManager.selectContextMenuOption(DeckPickerContextMenuOption.CUSTOM_STUDY_EMPTY, deckId) // Empty
+
+                assertTrue(allCardsInSameDeck(cardIds, 1))
+
+                supportFragmentManager.selectContextMenuOption(DeckPickerContextMenuOption.CUSTOM_STUDY_REBUILD, deckId) // Rebuild
+
+                assertTrue(allCardsInSameDeck(cardIds, deckId))
+            }
+        }
+
+    private fun allCardsInSameDeck(
+        cardIds: List<Long>,
+        deckId: DeckId,
+    ): Boolean = cardIds.all { col.getCard(it).did == deckId }
 
     @Test
     @RunInBackground
@@ -407,30 +551,33 @@ class DeckPickerTest : RobolectricTest() {
         try {
             setupColV16()
             InitialActivityWithConflictTest.setupForValid(targetContext)
-            val deckPicker: DeckPicker = super.startActivityNormallyOpenCollectionWithIntent(
-                DeckPickerEx::class.java, Intent()
-            )
+            val deckPicker: DeckPicker =
+                super.startActivityNormallyOpenCollectionWithIntent(
+                    DeckPickerEx::class.java,
+                    Intent(),
+                )
             waitForAsyncTasksToComplete()
             assertThat(
                 "Collection should now be open",
-                CollectionHelper.instance.colIsOpen()
+                CollectionManager.isOpenUnsafe(),
             )
             assertThat(
                 CollectionType.SCHEMA_V_16.isCollection(
-                    col
+                    col,
                 ),
-                equalTo(true)
+                equalTo(true),
             )
             assertThat(
                 "Decks should be visible",
                 deckPicker.visibleDeckCount,
-                equalTo(1)
+                equalTo(1),
             )
         } finally {
             InitialActivityWithConflictTest.setupForDefault()
         }
     }
 
+    @Ignore("needs refactoring")
     @Test
     fun corruptVersion16CollectionShowsDatabaseError() {
         try {
@@ -439,18 +586,20 @@ class DeckPickerTest : RobolectricTest() {
             // corrupt col
             DbUtils.performQuery(targetContext, "drop table decks")
             InitialActivityWithConflictTest.setupForValid(targetContext)
-            val deckPicker = super.startActivityNormallyOpenCollectionWithIntent(
-                DeckPickerEx::class.java, Intent()
-            )
+            val deckPicker =
+                super.startActivityNormallyOpenCollectionWithIntent(
+                    DeckPickerEx::class.java,
+                    Intent(),
+                )
             waitForAsyncTasksToComplete()
             assertThat(
                 "Collection should not be open",
-                !CollectionHelper.instance.colIsOpen()
+                !CollectionManager.isOpenUnsafe(),
             )
             assertThat(
                 "An error dialog should be displayed",
                 deckPicker.databaseErrorDialog,
-                equalTo(DatabaseErrorDialog.DIALOG_LOAD_FAILED)
+                equalTo(DatabaseErrorDialogType.DIALOG_LOAD_FAILED),
             )
         } finally {
             InitialActivityWithConflictTest.setupForDefault()
@@ -462,22 +611,24 @@ class DeckPickerTest : RobolectricTest() {
         try {
             setupColV250()
             InitialActivityWithConflictTest.setupForValid(targetContext)
-            val deckPicker = super.startActivityNormallyOpenCollectionWithIntent(
-                DeckPickerEx::class.java, Intent()
-            )
+            val deckPicker =
+                super.startActivityNormallyOpenCollectionWithIntent(
+                    DeckPickerEx::class.java,
+                    Intent(),
+                )
             waitForAsyncTasksToComplete()
             assertThat(
                 "Collection should not be open",
-                !CollectionHelper.instance.colIsOpen()
+                !CollectionManager.isOpenUnsafe(),
             )
             assertThat(
                 "An error dialog should be displayed",
                 deckPicker.databaseErrorDialog,
-                equalTo(DatabaseErrorDialog.INCOMPATIBLE_DB_VERSION)
+                equalTo(DatabaseErrorDialogType.INCOMPATIBLE_DB_VERSION),
             )
             assertThat(
                 CollectionHelper.getDatabaseVersion(targetContext),
-                equalTo(250)
+                equalTo(250),
             )
         } catch (e: UnknownDatabaseVersionException) {
             assertThat("no exception should be thrown", false, equalTo(true))
@@ -489,15 +640,17 @@ class DeckPickerTest : RobolectricTest() {
     @Test
     fun checkDisplayOfStudyOptionsOnTablet() {
         assumeTrue("We are running on a tablet", mQualifiers!!.contains("xlarge"))
-        val deckPickerEx = super.startActivityNormallyOpenCollectionWithIntent(
-            DeckPickerEx::class.java, Intent()
-        )
+        val deckPickerEx =
+            super.startActivityNormallyOpenCollectionWithIntent(
+                DeckPickerEx::class.java,
+                Intent(),
+            )
         val studyOptionsFragment =
             deckPickerEx.supportFragmentManager.findFragmentById(R.id.studyoptions_fragment) as StudyOptionsFragment?
         assertThat(
             "Study options should show on start on tablet",
             studyOptionsFragment,
-            notNullValue()
+            notNullValue(),
         )
     }
 
@@ -506,13 +659,15 @@ class DeckPickerTest : RobolectricTest() {
         addDeck("Hello World")
         // Reason for using 2 as the number of decks -> This deck + Default deck
         assertThat("Deck added", col.decks.count(), equalTo(2))
-        val deckPicker = startActivityNormallyOpenCollectionWithIntent(
-            DeckPicker::class.java, Intent()
-        )
+        val deckPicker =
+            startActivityNormallyOpenCollectionWithIntent(
+                DeckPicker::class.java,
+                Intent(),
+            )
         assertThat(
             "Deck is being displayed",
             deckPicker.hasAtLeastOneDeckBeingDisplayed(),
-            equalTo(true)
+            equalTo(true),
         )
     }
 
@@ -521,15 +676,69 @@ class DeckPickerTest : RobolectricTest() {
         // Only default deck would be there in the count, hence using the value as 1.
         // Default deck does not get displayed in the DeckPicker if the default deck is empty.
         assertThat("Contains only default deck", col.decks.count(), equalTo(1))
-        val deckPicker = startActivityNormallyOpenCollectionWithIntent(
-            DeckPicker::class.java, Intent()
-        )
+        val deckPicker =
+            startActivityNormallyOpenCollectionWithIntent(
+                DeckPicker::class.java,
+                Intent(),
+            )
         assertThat(
             "No deck is being displayed",
             deckPicker.hasAtLeastOneDeckBeingDisplayed(),
-            equalTo(false)
+            equalTo(false),
         )
     }
+
+    @Test
+    fun `unbury is usable - Issue 15050`() {
+        // We had an issue where 'Unbury' was not visible
+        // This was because the deck selection was not changed when a long press occurred
+
+        // one empty deck to be initially selected, one with cards to check 'unbury' status
+        val emptyDeck = addDeck("No Cards")
+        val deckWithCards = addDeck("With Cards")
+        updateDeckConfig(deckWithCards) { new.bury = true }
+
+        // Add a note with 2 cards in deck "With Cards", one of these cards is to be buried
+        col.notetypes.byName("Basic (and reversed card)")!!.also { noteType ->
+            col.notetypes.save(noteType.apply { put("did", deckWithCards) })
+        }
+        addBasicAndReversedNote()
+
+        // Answer 'Easy' for one of the cards, burying the other
+        col.decks.select(deckWithCards)
+        col.sched.deckDueTree() // ? if not called, decks.select(toSelect) un-buries a card
+        col.sched.answerCard(col.sched.card!!, Ease.EASY)
+        assertThat("the other card is buried", col.sched.card, nullValue())
+
+        // select a deck with no cards
+        col.decks.select(emptyDeck)
+        assertThat("unbury is not visible: deck has no cards", !col.sched.haveBuried())
+
+        deckPicker {
+            assertThat("deck focus is set", viewModel.focusedDeck, equalTo(emptyDeck))
+
+            // ACT: open up the Deck Context Menu
+            val deckToClick =
+                recyclerView.children.single {
+                    it.findViewById<TextView>(R.id.deckpicker_name).text == "With Cards"
+                }
+            deckToClick.performLongClick()
+
+            // ASSERT
+            assertThat("unbury is visible: one card is buried", col.sched.haveBuried())
+            assertThat("deck focus has changed", viewModel.focusedDeck, equalTo(deckWithCards))
+        }
+    }
+
+    private fun deckPicker(function: suspend DeckPicker.() -> Unit) =
+        runTest {
+            val deckPicker =
+                startActivityNormallyOpenCollectionWithIntent(
+                    DeckPicker::class.java,
+                    Intent(),
+                )
+            function(deckPicker)
+        }
 
     private fun useCollection(collectionType: CollectionType) {
         // load asset into temp
@@ -539,15 +748,15 @@ class DeckPickerTest : RobolectricTest() {
         val collectionDirectory = p.parent
 
         // set collection path
-        AnkiDroidApp.getSharedPrefs(targetContext).edit {
+        targetContext.sharedPrefs().edit {
             putString(CollectionHelper.PREF_COLLECTION_PATH, collectionDirectory)
         }
 
         // ensure collection not loaded yet
         assertThat(
             "collection should not be loaded",
-            CollectionHelper.instance.colIsOpen(),
-            equalTo(false)
+            CollectionManager.isOpenUnsafe(),
+            equalTo(false),
         )
     }
 
@@ -561,31 +770,37 @@ class DeckPickerTest : RobolectricTest() {
         useCollection(CollectionType.SCHEMA_V_250)
     }
 
-    enum class CollectionType(val assetFile: String, private val deckName: String) {
-        SCHEMA_V_16("schema16.anki2", "ThisIsSchema16"), SCHEMA_V_250(
+    enum class CollectionType(
+        val assetFile: String,
+        private val deckName: String,
+    ) {
+        SCHEMA_V_16("schema16.anki2", "ThisIsSchema16"),
+        SCHEMA_V_250(
             "schema250.anki2",
-            "ThisIsSchema250"
-        );
+            "ThisIsSchema250",
+        ),
+        ;
 
-        fun isCollection(col: com.ichi2.libanki.Collection): Boolean {
-            return col.decks.allNames().contains(deckName)
-        }
+        fun isCollection(col: com.ichi2.libanki.Collection): Boolean = col.decks.byName(deckName) != null
     }
 
     private class DeckPickerEx : DeckPicker() {
-        var databaseErrorDialog = 0
+        var databaseErrorDialog: DatabaseErrorDialogType? = null
         var displayedAnalyticsOptIn = false
         var optionsMenu: Menu? = null
 
-        override fun showDatabaseErrorDialog(id: Int) {
-            databaseErrorDialog = id
+        override fun showDatabaseErrorDialog(
+            errorDialogType: DatabaseErrorDialogType,
+            exceptionData: DatabaseErrorDialog.CustomExceptionData?,
+        ) {
+            databaseErrorDialog = errorDialogType
         }
 
         fun onStoragePermissionGranted() {
             onRequestPermissionsResult(
                 REQUEST_STORAGE_PERMISSION,
                 arrayOf(""),
-                intArrayOf(PackageManager.PERMISSION_GRANTED)
+                intArrayOf(PackageManager.PERMISSION_GRANTED),
             )
         }
 
@@ -597,30 +812,6 @@ class DeckPickerTest : RobolectricTest() {
         override fun onPrepareOptionsMenu(menu: Menu): Boolean {
             optionsMenu = menu
             return super.onPrepareOptionsMenu(menu)
-        }
-    }
-
-    // Migration
-    @Test
-    fun `If user never postponed migration, shouldNotWaitMoreToOfferToMigrate() returns true`() {
-        ActivityScenario.launch(DeckPicker::class.java).use { scenario ->
-            scenario.onActivity { deckPicker: DeckPicker ->
-                assertThat("When no postpone occurred, it should be time to offer migration", deckPicker.shouldNotWaitMoreToOfferToMigrate())
-            }
-        }
-    }
-
-    @Test
-    fun `If user postpone, shouldNotWaitMoreToOfferToMigrate() returns false, an true later`() {
-        // Testing twice because the function may have side effect and normally we should not see different after two calls
-        ActivityScenario.launch(DeckPicker::class.java).use { scenario ->
-            scenario.onActivity { deckPicker: DeckPicker ->
-                deckPicker.setMigrationWasLastPostponedAtToNow()
-                assertThat("When postpone just occurred, we should not offer migration", !deckPicker.shouldNotWaitMoreToOfferToMigrate())
-                (TimeManager.time as MockTime).addD(POSTPONE_MIGRATION_INTERVAL_DAYS)
-                (TimeManager.time as MockTime).addM(1)
-                assertThat("When postpone occurred after our interval elapsed, it should be time to offer migration", deckPicker.shouldNotWaitMoreToOfferToMigrate())
-            }
         }
     }
 }

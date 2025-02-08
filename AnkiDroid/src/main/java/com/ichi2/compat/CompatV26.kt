@@ -18,20 +18,28 @@ package com.ichi2.compat
 
 import android.annotation.TargetApi
 import android.content.Context
-import android.media.AudioFocusRequest
-import android.media.AudioManager
-import android.media.AudioManager.OnAudioFocusChangeListener
 import android.os.VibrationEffect
 import android.os.Vibrator
+import android.view.View
 import androidx.annotation.VisibleForTesting
 import com.ichi2.anki.NotificationChannels
-import com.ichi2.utils.KotlinCleanup
-import java.io.*
-import java.nio.file.*
+import java.io.File
+import java.io.FileNotFoundException
+import java.io.IOException
+import java.io.InputStream
+import java.io.OutputStream
+import java.nio.file.DirectoryIteratorException
+import java.nio.file.DirectoryStream
+import java.nio.file.Files
+import java.nio.file.NoSuchFileException
+import java.nio.file.Path
+import java.nio.file.Paths
+import java.nio.file.StandardCopyOption
+import kotlin.time.Duration
 
 /** Implementation of [Compat] for SDK level 26 and higher. Check  [Compat]'s for more detail.  */
 @TargetApi(26)
-open class CompatV26 : CompatV23(), Compat {
+open class CompatV26 : CompatV24() {
     /**
      * In Oreo and higher, you must create a channel for all notifications.
      * This will create the channel if it doesn't exist, or if it exists it will update the name.
@@ -40,31 +48,37 @@ open class CompatV26 : CompatV23(), Compat {
         NotificationChannels.setup(context)
     }
 
-    @Suppress("DEPRECATION")
-    @KotlinCleanup("when solving the deprecation of Context.VIBRATOR_SERVICE fix the SENSELESS_COMPARISON warning")
-    override fun vibrate(context: Context, durationMillis: Long) {
-        val vibratorManager = context.getSystemService(Context.VIBRATOR_SERVICE) as Vibrator
-        @Suppress("SENSELESS_COMPARISON")
+    override fun setTooltipTextByContentDescription(view: View) { // Nothing to do API26+
+    }
+
+    @Suppress("DEPRECATION") // VIBRATOR_SERVICE => VIBRATOR_MANAGER_SERVICE handled in CompatV31
+    override fun vibrate(context: Context, duration: Duration) {
+        val vibratorManager = context.getSystemService(Context.VIBRATOR_SERVICE) as? Vibrator
         if (vibratorManager != null) {
-            val effect = VibrationEffect.createOneShot(durationMillis, VibrationEffect.DEFAULT_AMPLITUDE)
+            val effect = VibrationEffect.createOneShot(duration.inWholeMilliseconds, VibrationEffect.DEFAULT_AMPLITUDE)
             vibratorManager.vibrate(effect)
         }
     }
 
     @Throws(IOException::class)
-    override fun copyFile(source: String, target: String) {
+    override fun copyFile(
+        source: String,
+        target: String,
+    ) {
         Files.copy(Paths.get(source), Paths.get(target), StandardCopyOption.REPLACE_EXISTING)
     }
 
     @Throws(IOException::class)
-    override fun copyFile(source: String, target: OutputStream): Long {
-        return Files.copy(Paths.get(source), target)
-    }
+    override fun copyFile(
+        source: String,
+        target: OutputStream,
+    ): Long = Files.copy(Paths.get(source), target)
 
     @Throws(IOException::class)
-    override fun copyFile(source: InputStream, target: String): Long {
-        return Files.copy(source, Paths.get(target), StandardCopyOption.REPLACE_EXISTING)
-    }
+    override fun copyFile(
+        source: InputStream,
+        target: String,
+    ): Long = Files.copy(source, Paths.get(target), StandardCopyOption.REPLACE_EXISTING)
 
     @Throws(IOException::class)
     override fun deleteFile(file: File) {
@@ -80,33 +94,9 @@ open class CompatV26 : CompatV23(), Compat {
         Files.createDirectories(directory.toPath())
     }
 
-    override fun requestAudioFocus(
-        audioManager: AudioManager,
-        audioFocusChangeListener: OnAudioFocusChangeListener,
-        audioFocusRequest: AudioFocusRequest?
-    ) {
-        // requestAudioFocus needs NonNull argument
-        if (audioFocusRequest != null) {
-            audioManager.requestAudioFocus(audioFocusRequest)
-        }
-    }
-
-    override fun abandonAudioFocus(
-        audioManager: AudioManager,
-        audioFocusChangeListener: OnAudioFocusChangeListener,
-        audioFocusRequest: AudioFocusRequest?
-    ) {
-        // abandonAudioFocusRequest needs NonNull argument
-        if (audioFocusRequest != null) {
-            audioManager.abandonAudioFocusRequest(audioFocusRequest)
-        }
-    }
-
     @VisibleForTesting
     @Throws(IOException::class)
-    fun newDirectoryStream(dir: Path?): DirectoryStream<Path> {
-        return Files.newDirectoryStream(dir)
-    }
+    fun newDirectoryStream(dir: Path?): DirectoryStream<Path> = Files.newDirectoryStream(dir)
 
     /*
      * This method uses [Files.newDirectoryStream].
@@ -114,17 +104,18 @@ open class CompatV26 : CompatV23(), Compat {
      */
     @Throws(IOException::class)
     override fun contentOfDirectory(directory: File): FileStream {
-        val pathsStream: DirectoryStream<Path> = try {
-            newDirectoryStream(directory.toPath())
-        } catch (noSuchFileException: NoSuchFileException) {
-            throw FileNotFoundException(
-                """
+        val pathsStream: DirectoryStream<Path> =
+            try {
+                newDirectoryStream(directory.toPath())
+            } catch (noSuchFileException: NoSuchFileException) {
+                throw FileNotFoundException(
+                    """
                     ${noSuchFileException.file}
                     ${noSuchFileException.cause}
                     ${noSuchFileException.stackTrace}
-                """.trimIndent()
-            )
-        }
+                    """.trimIndent(),
+                )
+            }
         val paths: Iterator<Path> = pathsStream.iterator()
         return object : FileStream {
             @Throws(IOException::class)
@@ -133,14 +124,13 @@ open class CompatV26 : CompatV23(), Compat {
             }
 
             @Throws(IOException::class)
-            override operator fun hasNext(): Boolean {
-                return try {
+            override operator fun hasNext(): Boolean =
+                try {
                     paths.hasNext()
                 } catch (e: DirectoryIteratorException) {
                     // According to the documentation, it's the only exception it can throws.
                     throw e.cause!!
                 }
-            }
 
             @Throws(IOException::class)
             override operator fun next(): File {

@@ -17,18 +17,17 @@
 package com.ichi2.anki.servicemodel
 
 import android.content.SharedPreferences
-import android.text.TextUtils
 import androidx.core.content.edit
 import androidx.test.ext.junit.runners.AndroidJUnit4
-import com.ichi2.anki.AnkiDroidApp
 import com.ichi2.anki.RobolectricTest
 import com.ichi2.anki.noteeditor.CustomToolbarButton
+import com.ichi2.anki.preferences.sharedPrefs
 import com.ichi2.anki.servicelayer.PreferenceUpgradeService
 import com.ichi2.anki.servicelayer.PreferenceUpgradeService.PreferenceUpgrade
 import com.ichi2.anki.servicelayer.RemovedPreferences
-import com.ichi2.anki.web.CustomSyncServer
 import com.ichi2.libanki.Consts
 import com.ichi2.utils.HashUtil
+import com.ichi2.utils.LanguageUtil
 import org.hamcrest.CoreMatchers.equalTo
 import org.hamcrest.MatcherAssert.assertThat
 import org.hamcrest.Matchers.lessThan
@@ -36,40 +35,41 @@ import org.junit.Assert.assertEquals
 import org.junit.Before
 import org.junit.Test
 import org.junit.runner.RunWith
+import java.util.Locale
+import kotlin.test.assertNotNull
 
 @RunWith(AndroidJUnit4::class)
 class PreferenceUpgradeServiceTest : RobolectricTest() {
-
-    private lateinit var mPrefs: SharedPreferences
+    private lateinit var prefs: SharedPreferences
 
     @Before
     override fun setUp() {
         super.setUp()
-        mPrefs = AnkiDroidApp.getSharedPrefs(targetContext)
+        prefs = targetContext.sharedPrefs()
     }
 
     @Test
     fun first_app_load_performs_no_upgrades() {
-        PreferenceUpgradeService.setPreferencesUpToDate(mPrefs)
-        val result = PreferenceUpgradeService.upgradePreferences(mPrefs, 0)
+        PreferenceUpgradeService.setPreferencesUpToDate(prefs)
+        val result = PreferenceUpgradeService.upgradePreferences(prefs, 0)
         assertThat("no upgrade should have taken place", result, equalTo(false))
     }
 
     @Test
     fun preference_upgrade_leads_to_max_version_in_preferences() {
-        val result = PreferenceUpgradeService.upgradePreferences(mPrefs, 0)
+        val result = PreferenceUpgradeService.upgradePreferences(prefs, 0)
         assertThat("preferences were upgraded", result, equalTo(true))
-        val version = PreferenceUpgrade.getPreferenceVersion(mPrefs)
-        PreferenceUpgradeService.setPreferencesUpToDate(mPrefs)
-        val secondVersion = PreferenceUpgrade.getPreferenceVersion(mPrefs)
+        val version = PreferenceUpgrade.getPreferenceVersion(prefs)
+        PreferenceUpgradeService.setPreferencesUpToDate(prefs)
+        val secondVersion = PreferenceUpgrade.getPreferenceVersion(prefs)
         assertThat("setPreferencesUpToDate should not change the version", secondVersion, equalTo(version))
     }
 
     @Test
     fun two_upgrades_does_nothing() {
-        val result = PreferenceUpgradeService.upgradePreferences(mPrefs, 0)
+        val result = PreferenceUpgradeService.upgradePreferences(prefs, 0)
         assertThat("preferences were upgraded", result, equalTo(true))
-        val secondResult = PreferenceUpgradeService.upgradePreferences(mPrefs, 0)
+        val secondResult = PreferenceUpgradeService.upgradePreferences(prefs, 0)
         assertThat("a second preference upgrade does nothing", secondResult, equalTo(false))
     }
 
@@ -88,7 +88,7 @@ class PreferenceUpgradeServiceTest : RobolectricTest() {
             assertThat(
                 "versions should be increasing, but found (${it.first}) before (${it.second})",
                 it.first,
-                lessThan(it.second)
+                lessThan(it.second),
             )
         }
     }
@@ -103,38 +103,29 @@ class PreferenceUpgradeServiceTest : RobolectricTest() {
             "Different count of nested classes ($nestedClassCount) and upgrades ($upgradeCount). \n" +
                 "nested classes:\n ${nestedClasses.map { it.simpleName }.joinToString("\n")}",
             nestedClassCount,
-            equalTo(upgradeCount)
+            equalTo(upgradeCount),
         )
-    }
-
-    @Test
-    fun `Legacy custom media sync URL is removed during upgrade`() {
-        val syncURL = "https://msync.ankiweb.net"
-        mPrefs.edit { putString(CustomSyncServer.PREFERENCE_CUSTOM_MEDIA_SYNC_URL, syncURL) }
-        assertThat(mPrefs.getString(CustomSyncServer.PREFERENCE_CUSTOM_MEDIA_SYNC_URL, null), equalTo(syncURL))
-        PreferenceUpgrade.RemoveLegacyMediaSyncUrl().performUpgrade(mPrefs)
-        assertThat(mPrefs.getString(CustomSyncServer.PREFERENCE_CUSTOM_MEDIA_SYNC_URL, null), equalTo(null))
     }
 
     @Test
     fun note_editor_toolbar_button_text() {
         // add two example toolbar buttons
-        val buttons = HashUtil.HashSetInit<String>(2)
+        val buttons = HashUtil.hashSetInit<String>(2)
 
-        var values = arrayOf(0, "<h1>", "</h1>")
-        buttons.add(TextUtils.join(Consts.FIELD_SEPARATOR, values))
+        var values = arrayOf("0", "<h1>", "</h1>")
+        buttons.add(values.joinToString(Consts.FIELD_SEPARATOR))
 
-        values = arrayOf(1, "<p>", "</p>")
-        buttons.add(TextUtils.join(Consts.FIELD_SEPARATOR, values))
+        values = arrayOf("1", "<p>", "</p>")
+        buttons.add(values.joinToString(Consts.FIELD_SEPARATOR))
 
-        mPrefs.edit {
+        prefs.edit {
             putStringSet("note_editor_custom_buttons", buttons)
         }
 
         // now update it and check it
-        PreferenceUpgrade.UpdateNoteEditorToolbarPrefs().performUpgrade(mPrefs)
+        PreferenceUpgrade.UpdateNoteEditorToolbarPrefs().performUpgrade(prefs)
 
-        val set = mPrefs.getStringSet("note_editor_custom_buttons", HashUtil.HashSetInit<String>(0)) as Set<String?>
+        val set = prefs.getStringSet("note_editor_custom_buttons", HashUtil.hashSetInit<String>(0)) as Set<String?>
         val toolbarButtons = CustomToolbarButton.fromStringSet(set)
 
         assertEquals("Set size", 2, set.size)
@@ -147,56 +138,79 @@ class PreferenceUpgradeServiceTest : RobolectricTest() {
     @Test
     fun day_and_night_themes() {
         // Plain and Dark
-        mPrefs.edit {
+        prefs.edit {
             putString("dayTheme", "1")
             putString("nightTheme", "1")
             putBoolean("invertedColors", true)
         }
-        PreferenceUpgrade.UpgradeDayAndNightThemes().performUpgrade(mPrefs)
+        PreferenceUpgrade.UpgradeDayAndNightThemes().performUpgrade(prefs)
 
-        assertThat(mPrefs.getString("dayTheme", "0"), equalTo("2"))
-        assertThat(mPrefs.getString("nightTheme", "0"), equalTo("4"))
-        assertThat(mPrefs.contains("invertedColors"), equalTo(false))
+        assertThat(prefs.getString("dayTheme", "0"), equalTo("2"))
+        assertThat(prefs.getString("nightTheme", "0"), equalTo("4"))
+        assertThat(prefs.contains("invertedColors"), equalTo(false))
 
         // Light and Black
-        mPrefs.edit {
+        prefs.edit {
             putString("dayTheme", "0")
             putString("nightTheme", "0")
         }
-        PreferenceUpgrade.UpgradeDayAndNightThemes().performUpgrade(mPrefs)
+        PreferenceUpgrade.UpgradeDayAndNightThemes().performUpgrade(prefs)
 
-        assertThat(mPrefs.getString("dayTheme", "1"), equalTo("1"))
-        assertThat(mPrefs.getString("nightTheme", "1"), equalTo("3"))
-        assertThat(mPrefs.contains("invertedColors"), equalTo(false))
+        assertThat(prefs.getString("dayTheme", "1"), equalTo("1"))
+        assertThat(prefs.getString("nightTheme", "1"), equalTo("3"))
+        assertThat(prefs.contains("invertedColors"), equalTo(false))
     }
 
     @Test
-    fun `Custom collection sync URL preference contains full path after upgrade`() {
-        mPrefs.edit {
-            putString(RemovedPreferences.PREFERENCE_CUSTOM_SYNC_BASE, "http://foo")
+    fun `Fetch media pref's values are converted to 'always' if enabled and 'never' if disabled`() {
+        // enabled -> always
+        prefs.edit { putBoolean(RemovedPreferences.SYNC_FETCHES_MEDIA, true) }
+        PreferenceUpgrade.UpgradeFetchMedia().performUpgrade(prefs)
+        assertThat(prefs.getString("syncFetchMedia", null), equalTo("always"))
+
+        // disabled -> never
+        prefs.edit { putBoolean(RemovedPreferences.SYNC_FETCHES_MEDIA, false) }
+        PreferenceUpgrade.UpgradeFetchMedia().performUpgrade(prefs)
+        assertThat(prefs.getString("syncFetchMedia", null), equalTo("never"))
+    }
+
+    // ############################
+    // ##### UpgradeAppLocale #####
+    // ############################
+    @Test
+    fun `Language preference value is updated to use language tags`() {
+        val upgradeAppLocale = PreferenceUpgrade.UpgradeAppLocale()
+        for (languageTag in LanguageUtil.APP_LANGUAGES.values) {
+            prefs.edit {
+                putString("language", Locale.forLanguageTag(languageTag).toString())
+            }
+            upgradeAppLocale.performUpgrade(prefs)
+            val correctLanguage = prefs.getString("language", null)
+            assertThat(languageTag, equalTo(correctLanguage))
+            // The following assertion broke when updating targetSdk from 33->34 / robolectric from 32->34
+            // However, a manual verification on an API33 and API34 emulator worked as follows:
+            // - call sites are in AnkiDroidApp to show different manuals *if* the manual is translated
+            // - follow app use path: get help / using / ankidroid manual -> it should send you to English manual
+            // - manual is translated in Japanese, so set app language preference to Japanese
+            // - set app language back to english, verify it goes to english manual again
+            // assertThat(LanguageUtil.getCurrentLocaleTag(), equalTo(languageTag))
         }
-
-        PreferenceUpgrade.UpgradeCustomCollectionSyncUrl().performUpgrade(mPrefs)
-
-        assertThat(mPrefs.contains(RemovedPreferences.PREFERENCE_CUSTOM_SYNC_BASE), equalTo(false))
-        assertThat(mPrefs.getString(CustomSyncServer.PREFERENCE_CUSTOM_COLLECTION_SYNC_URL, ""), equalTo("http://foo/sync/"))
     }
 
     @Test
-    fun `Removed Use custom sync server preference is applied to both sync URL preferences after upgrade`() {
-        mPrefs.edit {
-            putString(CustomSyncServer.PREFERENCE_CUSTOM_COLLECTION_SYNC_URL, "http://foo/sync/")
-            putBoolean(RemovedPreferences.PREFERENCE_ENABLE_CUSTOM_SYNC_SERVER, true)
-        }
+    fun `Language preference value is set to system default correctly if it hasn't been set`() {
+        PreferenceUpgrade.UpgradeAppLocale().performUpgrade(prefs)
 
-        assertThat(CustomSyncServer.getCollectionSyncUrlIfSetAndEnabledOrNull(mPrefs), equalTo(null))
-        assertThat(CustomSyncServer.getMediaSyncUrlIfSetAndEnabledOrNull(mPrefs), equalTo(null))
+        assertNotNull(prefs.getString("language", null))
+        assertThat(LanguageUtil.getCurrentLocaleTag(), equalTo(""))
+    }
 
-        PreferenceUpgrade.UpgradeCustomSyncServerEnabled().performUpgrade(mPrefs)
+    @Test
+    fun `Language preference value is set to system default correctly`() {
+        prefs.edit { putString("language", "") }
+        PreferenceUpgrade.UpgradeAppLocale().performUpgrade(prefs)
 
-        assertThat(mPrefs.getBoolean(CustomSyncServer.PREFERENCE_CUSTOM_COLLECTION_SYNC_SERVER_ENABLED, false), equalTo(true))
-        assertThat(mPrefs.getBoolean(CustomSyncServer.PREFERENCE_CUSTOM_MEDIA_SYNC_SERVER_ENABLED, false), equalTo(false))
-        assertThat(CustomSyncServer.getCollectionSyncUrlIfSetAndEnabledOrNull(mPrefs), equalTo("http://foo/sync/"))
-        assertThat(CustomSyncServer.getMediaSyncUrlIfSetAndEnabledOrNull(mPrefs), equalTo(null))
+        assertThat(prefs.getString("language", null), equalTo(""))
+        assertThat(LanguageUtil.getCurrentLocaleTag(), equalTo(""))
     }
 }

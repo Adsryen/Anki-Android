@@ -21,92 +21,65 @@ import androidx.core.content.edit
 import anki.sync.SyncAuth
 import anki.sync.SyncStatusResponse
 import com.ichi2.anki.AnkiDroidApp
-import com.ichi2.anki.servicelayer.ScopedStorageService.userMigrationIsInProgress
-import com.ichi2.libanki.Collection
-import net.ankiweb.rsdroid.BackendFactory
+import com.ichi2.anki.CollectionManager
+import com.ichi2.anki.SyncPreferences
+import com.ichi2.anki.preferences.sharedPrefs
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
+import net.ankiweb.rsdroid.exceptions.BackendNetworkException
+import timber.log.Timber
 
+// TODO Remove BADGE_DISABLED from this enum, it doesn't belong here
 enum class SyncStatus {
-    INCONCLUSIVE, NO_ACCOUNT, NO_CHANGES, HAS_CHANGES, FULL_SYNC, BADGE_DISABLED,
-    /**
-     * Scope storage migration is ongoing. Sync should be disabled.
-     */
-    ONGOING_MIGRATION;
+    NO_ACCOUNT,
+    NO_CHANGES,
+    HAS_CHANGES,
+    ONE_WAY,
+    BADGE_DISABLED,
+    ERROR,
+    ;
 
     companion object {
-        private var sPauseCheckingDatabase = false
-        private var sMarkedInMemory = false
-
-        fun getSyncStatus(col: Collection, context: Context, auth: SyncAuth?): SyncStatus {
-            if (userMigrationIsInProgress(context)) {
-                return ONGOING_MIGRATION
-            }
+        suspend fun getSyncStatus(
+            context: Context,
+            auth: SyncAuth?,
+        ): SyncStatus {
             if (isDisabled) {
                 return BADGE_DISABLED
             }
             if (auth == null) {
                 return NO_ACCOUNT
             }
-            if (!BackendFactory.defaultLegacySchema) {
-                return syncStatusFromRequired(col.newBackend.backend.syncStatus(auth).required)
-            }
-            if (col.schemaChanged()) {
-                return FULL_SYNC
-            }
-            return if (hasDatabaseChanges()) {
-                HAS_CHANGES
-            } else {
+            return try {
+                // Use CollectionManager to ensure that this doesn't block 'deck count' tasks
+                // throws if a .colpkg import or similar occurs just before this call
+                val output = withContext(Dispatchers.IO) { CollectionManager.getBackend().syncStatus(auth) }
+                if (output.hasNewEndpoint()) {
+                    context.sharedPrefs().edit {
+                        putString(SyncPreferences.CURRENT_SYNC_URI, output.newEndpoint)
+                    }
+                }
+                syncStatusFromRequired(output.required)
+            } catch (_: BackendNetworkException) {
                 NO_CHANGES
+            } catch (e: Exception) {
+                Timber.d(e, "error obtaining sync status: collection likely closed")
+                ERROR
             }
         }
 
-        private fun syncStatusFromRequired(required: SyncStatusResponse.Required?): SyncStatus {
-            return when (required) {
+        private fun syncStatusFromRequired(required: SyncStatusResponse.Required?): SyncStatus =
+            when (required) {
                 SyncStatusResponse.Required.NO_CHANGES -> NO_CHANGES
                 SyncStatusResponse.Required.NORMAL_SYNC -> HAS_CHANGES
-                SyncStatusResponse.Required.FULL_SYNC -> FULL_SYNC
+                SyncStatusResponse.Required.FULL_SYNC -> ONE_WAY
                 SyncStatusResponse.Required.UNRECOGNIZED, null -> TODO("unexpected required response")
             }
-        }
 
         private val isDisabled: Boolean
             get() {
-                val preferences = AnkiDroidApp.getSharedPrefs(AnkiDroidApp.instance)
+                val preferences = AnkiDroidApp.sharedPrefs()
                 return !preferences.getBoolean("showSyncStatusBadge", true)
             }
-
-        /** Whether data has been changed - to be converted to Rust  */
-        fun hasDatabaseChanges(): Boolean {
-            return AnkiDroidApp.getSharedPrefs(AnkiDroidApp.instance).getBoolean("changesSinceLastSync", false)
-        }
-
-        /** To be converted to Rust  */
-        fun markDataAsChanged() {
-            if (sPauseCheckingDatabase) {
-                return
-            }
-            sMarkedInMemory = true
-            AnkiDroidApp.getSharedPrefs(AnkiDroidApp.instance).edit { putBoolean("changesSinceLastSync", true) }
-        }
-
-        /** To be converted to Rust  */
-        @KotlinCleanup("Convert these to @RustCleanup")
-        fun markSyncCompleted() {
-            sMarkedInMemory = false
-            AnkiDroidApp.getSharedPrefs(AnkiDroidApp.instance).edit { putBoolean("changesSinceLastSync", false) }
-        }
-
-        fun ignoreDatabaseModification(runnable: Runnable) {
-            sPauseCheckingDatabase = true
-            try {
-                runnable.run()
-            } finally {
-                sPauseCheckingDatabase = false
-            }
-        }
-
-        /** Whether a change in data has been detected - used as a heuristic to stop slow operations  */
-        fun hasBeenMarkedAsChangedInMemory(): Boolean {
-            return sMarkedInMemory
-        }
     }
 }

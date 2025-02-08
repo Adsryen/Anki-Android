@@ -17,21 +17,26 @@
 package com.ichi2.anki
 
 import android.annotation.SuppressLint
-import android.os.Build
 import androidx.annotation.VisibleForTesting
+import androidx.annotation.WorkerThread
 import anki.backend.backendError
+import com.ichi2.anki.common.utils.android.isRobolectric
 import com.ichi2.libanki.Collection
-import com.ichi2.libanki.CollectionV16
 import com.ichi2.libanki.Storage.collection
 import com.ichi2.libanki.importCollectionPackage
 import com.ichi2.utils.Threads
-import kotlinx.coroutines.*
+import kotlinx.coroutines.CoroutineDispatcher
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.runBlocking
+import kotlinx.coroutines.withContext
 import net.ankiweb.rsdroid.Backend
 import net.ankiweb.rsdroid.BackendException
 import net.ankiweb.rsdroid.BackendFactory
 import net.ankiweb.rsdroid.Translations
+import okio.withLock
 import timber.log.Timber
 import java.io.File
+import java.util.concurrent.locks.ReentrantLock
 
 object CollectionManager {
     /**
@@ -53,18 +58,25 @@ object CollectionManager {
 
     private var queue: CoroutineDispatcher = Dispatchers.IO.limitedParallelism(1)
 
-    private val robolectric = "robolectric" == Build.FINGERPRINT
-
+    /**
+     * Test-only: emulates a number of failure cases when opening the collection
+     *
+     * @see [CollectionOpenFailure]
+     */
     @VisibleForTesting
-    var emulateOpenFailure = false
+    var emulatedOpenFailure: CollectionOpenFailure? = null
+
+    private val testMutex = ReentrantLock()
+
+    private var currentSyncCertificate: String = ""
 
     /**
-     * Execute the provided block on a serial queue, to ensure concurrent access
-     * does not happen.
+     * Execute the provided block on a serial background queue, to ensure
+     * concurrent access does not happen.
+     *
+     * The background queue is run in a [Dispatchers.IO] context.
      * It's important that the block is not suspendable - if it were, it would allow
      * multiple requests to be interleaved when a suspend point was hit.
-     *
-     * TODO Allow suspendable blocks, rely on locking instead.
      *
      * TODO Disallow running functions that are supposed to be run inside the queue outside of it.
      *   For instance, this can be done by marking a [block] with a context
@@ -80,7 +92,15 @@ object CollectionManager {
      *
      *       context(Queue) suspend fun canOnlyBeRunInWithQueue()
      */
-    private suspend fun<T> withQueue(block: CollectionManager.() -> T): T {
+    private suspend fun <T> withQueue(
+        @WorkerThread block: CollectionManager.() -> T,
+    ): T {
+        if (isRobolectric) {
+            // #16253 Robolectric Windows: `withContext(queue)` is insufficient for serial execution
+            return testMutex.withLock {
+                this@CollectionManager.block()
+            }
+        }
         return withContext(queue) {
             this@CollectionManager.block()
         }
@@ -89,16 +109,19 @@ object CollectionManager {
     /**
      * Execute the provided block with the collection, opening if necessary.
      *
+     * Calls are serialized, and run in background [Dispatchers.IO] thread.
+     *
      * Parallel calls to this function are guaranteed to be serialized, so you can be
      * sure the collection won't be closed or modified by another thread. This guarantee
      * does not hold if legacy code calls [getColUnsafe].
      */
-    suspend fun <T> withCol(block: Collection.() -> T): T {
-        return withQueue {
+    suspend fun <T> withCol(
+        @WorkerThread block: Collection.() -> T,
+    ): T =
+        withQueue {
             ensureOpenInner()
             block(collection!!)
         }
-    }
 
     /**
      * Execute the provided block if the collection is already open. See [withCol] for more.
@@ -107,15 +130,16 @@ object CollectionManager {
      * these two cases, it should wrap the return value of the block in a class (eg Optional),
      * instead of returning a nullable object.
      */
-    suspend fun<T> withOpenColOrNull(block: Collection.() -> T): T? {
-        return withQueue {
+    suspend fun <T> withOpenColOrNull(
+        @WorkerThread block: Collection.() -> T,
+    ): T? =
+        withQueue {
             if (collection != null && !collection!!.dbClosed) {
                 block(collection!!)
             } else {
                 null
             }
         }
-    }
 
     /**
      * Return a handle to the backend, creating if necessary. This should only be used
@@ -124,11 +148,11 @@ object CollectionManager {
      * thread safe and can be accessed concurrently, if another thread closes the collection
      * and you call a routine that expects an open collection, it will result in an error.
      */
-    suspend fun getBackend(): Backend {
-        return withQueue {
-            ensureBackendInner()
-            backend!!
+    fun getBackend(): Backend {
+        if (backend == null) {
+            runBlocking { withQueue { ensureBackendInner() } }
         }
+        return backend!!
     }
 
     /**
@@ -136,13 +160,19 @@ object CollectionManager {
      */
     val TR: Translations
         get() {
-            if (backend == null) {
-                runBlocking { ensureBackend() }
-            }
             // we bypass the lock here so that translations are fast - conflicts are unlikely,
             // as the backend is only ever changed on language preference change or schema switch
-            return backend!!.tr
+            return getBackend().tr
         }
+
+    fun compareAnswer(
+        expected: String,
+        given: String,
+        combining: Boolean = true,
+    ): String {
+        // bypass the lock, as the type answer code is heavily nested in non-suspend functions
+        return getBackend().compareAnswer(expected, given, combining)
+    }
 
     /**
      * Close the currently cached backend and discard it. Useful when enabling the V16 scheduler in the
@@ -175,26 +205,26 @@ object CollectionManager {
     /** See [ensureBackend]. This must only be run inside the queue. */
     private fun ensureBackendInner() {
         if (backend == null) {
-            backend = BackendFactory.getBackend(AnkiDroidApp.instance)
+            backend = BackendFactory.getBackend()
         }
     }
 
     /**
      * If the collection is open, close it.
      */
-    suspend fun ensureClosed(save: Boolean = true) {
+    suspend fun ensureClosed() {
         withQueue {
-            ensureClosedInner(save = save)
+            ensureClosedInner()
         }
     }
 
     /** See [ensureClosed]. This must only be run inside the queue. */
-    private fun ensureClosedInner(save: Boolean = true) {
+    private fun ensureClosedInner() {
         if (collection == null) {
             return
         }
         try {
-            collection!!.close(save = save)
+            collection!!.close()
         } catch (exc: Exception) {
             Timber.e("swallowing error on close: $exc")
         }
@@ -207,7 +237,7 @@ object CollectionManager {
      * Automatically called by [withCol]. Can be called directly to ensure collection
      * is loaded at a certain point in time, or to ensure no errors occur.
      */
-    suspend fun ensureOpen() {
+    private suspend fun ensureOpen() {
         withQueue {
             ensureOpenInner()
         }
@@ -216,30 +246,28 @@ object CollectionManager {
     /** See [ensureOpen]. This must only be run inside the queue. */
     private fun ensureOpenInner() {
         ensureBackendInner()
-        if (emulateOpenFailure) {
-            throw BackendException.BackendDbException.BackendDbLockedException(backendError {})
-        }
+        emulatedOpenFailure?.triggerFailure()
         if (collection == null || collection!!.dbClosed) {
-            val path = createCollectionPath()
+            val path = collectionPathInValidFolder()
             collection =
-                collection(AnkiDroidApp.instance, path, server = false, log = true, backend)
+                collection(path, backend)
         }
     }
 
-    // TODO Move withQueue to call site
     suspend fun deleteCollectionDirectory() {
         withQueue {
-            ensureClosedInner(save = false)
+            ensureClosedInner()
             getCollectionDirectory().deleteRecursively()
         }
     }
 
     fun getCollectionDirectory() =
-        File(CollectionHelper.getCurrentAnkiDroidDirectory(AnkiDroidApp.instance))
+        // Allow execution if AnkiDroidApp.instance is not initialized
+        File(CollectionHelper.getCurrentAnkiDroidDirectoryOptionalContext(AnkiDroidApp.sharedPrefs()) { AnkiDroidApp.instance })
 
     /** Ensures the AnkiDroid directory is created, then returns the path to the collection file
      * inside it. */
-    fun createCollectionPath(): String {
+    fun collectionPathInValidFolder(): String {
         val dir = getCollectionDirectory().path
         CollectionHelper.initializeAnkiDroidDirectory(dir)
         return File(dir, "collection.anki2").absolutePath
@@ -248,22 +276,22 @@ object CollectionManager {
     /**
      * Like [withQueue], but can be used in a synchronous context.
      *
-     * Note: Because [runBlocking] inside [runTest] will lead to
-     * deadlocks, this will not block when run under Robolectric,
-     * and there is no guarantee about concurrent access.
+     * Note: [runBlocking] inside `RobolectricTest.runTest` will lead to deadlocks, so
+     * under Robolectric, this uses a mutex
      */
-    private fun <T> blockForQueue(block: CollectionManager.() -> T): T {
-        return if (robolectric) {
-            block(this)
+    private fun <T> blockForQueue(block: CollectionManager.() -> T): T =
+        if (isRobolectric) {
+            testMutex.withLock {
+                block(this)
+            }
         } else {
             runBlocking {
                 withQueue(block)
             }
         }
-    }
 
-    fun closeCollectionBlocking(save: Boolean = true) {
-        runBlocking { ensureClosed(save = save) }
+    fun closeCollectionBlocking() {
+        runBlocking { ensureClosed() }
     }
 
     /**
@@ -272,14 +300,13 @@ object CollectionManager {
      * the collection while the reference is held. [withCol]
      * is a better alternative.
      */
-    fun getColUnsafe(): Collection {
-        return logUIHangs {
+    fun getColUnsafe(): Collection =
+        logUIHangs {
             blockForQueue {
                 ensureOpenInner()
                 collection!!
             }
         }
-    }
 
     /**
      Execute [block]. If it takes more than 100ms of real time, Timber an error like:
@@ -296,21 +323,26 @@ object CollectionManager {
                 val stackTraceElements = Thread.currentThread().stackTrace
                 // locate the probable calling file/line in the stack trace, by filtering
                 // out our own code, and standard dalvik/java.lang stack frames
-                val caller = stackTraceElements.filter {
-                    val klass = it.className
-                    for (
-                        text in listOf(
-                            "CollectionManager", "dalvik", "java.lang",
-                            "CollectionHelper", "AnkiActivity"
-                        )
-                    ) {
-                        if (text in klass) {
-                            return@filter false
-                        }
-                    }
-                    true
-                }.first()
-                Timber.e("blocked main thread for %dms:\n%s", elapsed, caller)
+                val caller =
+                    stackTraceElements
+                        .filter {
+                            val klass = it.className
+                            val toCheck =
+                                listOf(
+                                    "CollectionManager",
+                                    "dalvik",
+                                    "java.lang",
+                                    "CollectionHelper",
+                                    "AnkiActivity",
+                                )
+                            for (text in toCheck) {
+                                if (text in klass) {
+                                    return@filter false
+                                }
+                            }
+                            true
+                        }.first()
+                Timber.w("blocked main thread for %dms:\n%s", elapsed, caller)
             }
         }
     }
@@ -318,17 +350,16 @@ object CollectionManager {
     /**
      * True if the collection is open. Unsafe, as it has the potential to race.
      */
-    fun isOpenUnsafe(): Boolean {
-        return logUIHangs {
+    fun isOpenUnsafe(): Boolean =
+        logUIHangs {
             blockForQueue {
-                if (emulateOpenFailure) {
+                if (emulatedOpenFailure != null) {
                     false
                 } else {
-                    collection?.dbClosed == false
+                    collection?.dbClosed == false // non-failure mode.
                 }
             }
         }
-    }
 
     /**
      Use [col] as collection in tests.
@@ -344,46 +375,13 @@ object CollectionManager {
     }
 
     /**
-     * Execute block with the collection upgraded to the latest schema.
-     * If it was previously using the legacy schema, the collection is downgraded
-     * again after the block completes.
-     */
-    private suspend fun <T> withNewSchema(block: CollectionV16.() -> T): T {
-        return withCol {
-            if (BackendFactory.defaultLegacySchema) {
-                // Temporarily update to the latest schema.
-                discardBackendInner()
-                BackendFactory.defaultLegacySchema = false
-                ensureOpenInner()
-                try {
-                    (collection!! as CollectionV16).block()
-                } finally {
-                    BackendFactory.defaultLegacySchema = true
-                    discardBackendInner()
-                }
-            } else {
-                (this as CollectionV16).block()
-            }
-        }
-    }
-
-    /** Upgrade from v1 to v2 scheduler.
-     * Caller must have confirmed schema modification already.
-     */
-    suspend fun updateScheduler() {
-        withNewSchema {
-            sched.upgradeToV2()
-        }
-    }
-
-    /**
      * Replace the collection with the provided colpkg file if it is valid.
      */
     suspend fun importColpkg(colpkgPath: String) {
         withQueue {
             ensureClosedInner()
             ensureBackendInner()
-            importCollectionPackage(backend!!, createCollectionPath(), colpkgPath)
+            importCollectionPackage(backend!!, collectionPathInValidFolder(), colpkgPath)
         }
     }
 
@@ -391,5 +389,45 @@ object CollectionManager {
         // note: we avoid the call to .limitedParallelism() here,
         // as it does not seem to be compatible with the test scheduler
         queue = dispatcher
+    }
+
+    /**
+     * Update the custom TLS certificate used in the backend for its requests to the sync server.
+     *
+     * If the cert parameter hasn't changed from the cached sync certificate, then just return true.
+     * Otherwise, set the custom certificate in the backend and get the success value.
+     *
+     * If cert was a valid certificate, then cache it in currentSyncCertificate and return true.
+     * Otherwise, return false to indicate that a custom sync certificate was not applied.
+     *
+     * Passing in an empty string unsets any custom sync certificate in the backend.
+     */
+    fun updateCustomCertificate(cert: String): Boolean {
+        if (cert == currentSyncCertificate) {
+            return true
+        }
+
+        return getBackend().setCustomCertificate(cert).apply {
+            if (this) {
+                currentSyncCertificate = cert
+            }
+        }
+    }
+
+    enum class CollectionOpenFailure {
+        /** Raises [BackendException.BackendDbException.BackendDbLockedException] */
+        LOCKED,
+
+        /** Raises [BackendException.BackendFatalError] */
+        FATAL_ERROR,
+
+        ;
+
+        fun triggerFailure() {
+            when (this) {
+                LOCKED -> throw BackendException.BackendDbException.BackendDbLockedException(backendError {})
+                FATAL_ERROR -> throw BackendException.BackendFatalError(backendError {})
+            }
+        }
     }
 }

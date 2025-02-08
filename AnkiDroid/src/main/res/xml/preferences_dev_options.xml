@@ -19,17 +19,19 @@
 ~ at developers, who are assumed to speak English.
 -->
 <PreferenceScreen xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://arbitrary.app.namespace/com.ichi2.anki"
+    xmlns:app1="http://schemas.android.com/apk/res-auto"
     android:title="@string/pref_cat_dev_options"
     android:key="@string/pref_dev_options_screen_key">
-    <SwitchPreference
+    <SwitchPreferenceCompat
         android:title="@string/dev_options_enabled_pref"
         android:key="@string/dev_options_enabled_by_user_key"
         android:defaultValue="true"/>
-    <SwitchPreference
+    <SwitchPreferenceCompat
         android:defaultValue="false"
         android:key="@string/html_javascript_debugging_key"
-        android:summary="@string/html_javascript_debugging_summ"
-        android:title="@string/html_javascript_debugging"/>
+        android:summary="Enable remote WebView connections, and save card HTML to AnkiDroid directory"
+        android:title="HTML / JavaScript Debugging"/>
     <Preference
         android:title="Trigger test crash"
         android:summary="Touch here for an immediate test crash"
@@ -42,17 +44,51 @@
         android:title="Lock Database"
         android:summary="Touch here to lock the database (all threads block in-process, exception if using second process)"
         android:key="@string/pref_lock_database_key"/>
-    <SwitchPreference
-        android:title="@string/show_onboarding"
-        android:summary="@string/show_onboarding_desc"
-        android:key="@string/pref_show_onboarding_key"
+    <Preference
+        android:title="Set Database to pre-Scoped Storage default"
+        android:summary="Touch here to set the database path to /storage/emulated/0/AnkiDroid"
+        android:key="@string/pref_set_database_path_debug_key"/>
+    <SwitchPreferenceCompat
+        android:title="New congrats screen"
+        android:key="@string/new_congrats_screen_pref_key"
         android:defaultValue="false"/>
-    <Preference
-        android:title="Enable Scoped Storage"
-        android:summary="UNSTABLE. DO NOT USE ON A COLLECTION YOU CARE ABOUT. REVERTED ON APP CLOSE"
-        android:key="@string/pref_scoped_storage_key"/>
-    <Preference
-        android:title="@string/reset_onboarding"
-        android:summary="@string/reset_onboarding_desc"
-        android:key="@string/pref_reset_onboarding_key"/>
+    <PreferenceCategory
+        android:title="Create fake media"
+        >
+        <com.ichi2.preferences.IncrementerNumberRangePreferenceCompat
+            android:key="@string/pref_fill_collection_number_file_key"
+            android:title="Number of files to generate"
+            app1:useSimpleSummaryProvider="true"
+            android:defaultValue="20"
+            app:min="1"
+            />
+        <com.ichi2.preferences.IncrementerNumberRangePreferenceCompat
+            android:key="@string/pref_fill_collection_size_file_key"
+            android:title="Size of the files to generate (in byte)"
+            app1:useSimpleSummaryProvider="true"
+            android:defaultValue="1000000"
+            app:min="1"
+            />
+        <Preference
+            android:key="@string/pref_fill_collection_key"
+            android:title="Create files"
+            />
+    </PreferenceCategory>
+
+    <com.ichi2.anki.preferences.ExtendedPreferenceCategory
+        android:key="@string/pref_cat_wip_key"
+        android:title="Work in progress"
+        android:summary="Only for testing. Not suited for use. Don't create reports about them">
+
+        <SwitchPreferenceCompat
+            android:title="New reviewer"
+            android:key="@string/new_reviewer_pref_key"
+            android:defaultValue="false"/>
+        <Preference
+            android:title="New reviewer options"
+            android:key="@string/new_reviewer_options_key"
+            android:dependency="@string/new_reviewer_pref_key"
+            android:fragment="com.ichi2.anki.preferences.ReviewerOptionsFragment"/>
+
+    </com.ichi2.anki.preferences.ExtendedPreferenceCategory>
 </PreferenceScreen>

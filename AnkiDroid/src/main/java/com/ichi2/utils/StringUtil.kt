@@ -18,21 +18,10 @@
 package com.ichi2.utils
 
 import org.jetbrains.annotations.Contract
-import java.util.*
+import java.util.Locale
+import kotlin.math.min
 
 object StringUtil {
-    /** Trims from the right hand side of a string  */
-    @Contract("null -> null; !null -> !null")
-    fun trimRight(s: String?): String? {
-        if (s == null) return null
-
-        var newLength = s.length
-        while (newLength > 0 && Character.isWhitespace(s[newLength - 1])) {
-            newLength--
-        }
-        return if (newLength < s.length) s.substring(0, newLength) else s
-    }
-
     /** Converts the string to where the first letter is uppercase, and the rest of the string is lowercase  */
     @Contract("null -> null; !null -> !null")
     fun toTitleCase(s: String?): String? {
@@ -42,3 +31,15 @@ object StringUtil {
         return s.substring(0, 1).uppercase(Locale.getDefault()) + s.substring(1).lowercase(Locale.getDefault())
     }
 }
+
+fun String.trimToLength(maxLength: Int): String = this.substring(0, min(this.length, maxLength))
+
+fun String.lastIndexOfOrNull(c: Char): Int? =
+    when (val index = this.lastIndexOf(c)) {
+        -1 -> null
+        else -> index
+    }
+
+fun emptyStringMutableList(size: Int): MutableList<String> = MutableList(size) { "" }
+
+fun emptyStringArray(size: Int): Array<String> = Array(size) { "" }

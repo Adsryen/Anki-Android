@@ -71,7 +71,7 @@
         android:layout_height="wrap_content"
         android:paddingBottom="8dp"
         android:text="@string/intro_ankidroid_tagline_two"
-        android:textAlignment="textStart"
+        android:textAlignment="center"
         android:textSize="34sp"
         android:textStyle="bold"
         app:layout_constraintBottom_toTopOf="@+id/subtitle"
@@ -80,7 +80,7 @@
 
     <com.ichi2.ui.FixedTextView
         android:id="@+id/subtitle"
-        android:layout_width="wrap_content"
+        android:layout_width="match_parent"
         android:layout_height="wrap_content"
         android:layout_marginBottom="12dp"
         android:maxWidth="500dp"
@@ -90,12 +90,10 @@
         android:textSize="18sp"
         app:layout_constraintBottom_toTopOf="@+id/get_started"
         app:layout_constraintEnd_toEndOf="parent"
-        app:layout_constraintHorizontal_bias="0.0"
         app:layout_constraintStart_toStartOf="parent" />
 
     <com.google.android.material.button.MaterialButton
         android:id="@+id/get_started"
-        style="@style/LargeFilledButtonStyle"
         android:layout_width="wrap_content"
         android:layout_height="wrap_content"
         android:layout_marginBottom="12dp"
@@ -108,7 +106,6 @@
 
     <com.google.android.material.button.MaterialButton
         android:id="@+id/sync_profile"
-        style="@style/LargeFilledButtonStyle"
         android:layout_width="wrap_content"
         android:layout_height="wrap_content"
         android:layout_marginBottom="62dp"

@@ -22,9 +22,9 @@ import androidx.appcompat.graphics.drawable.DrawableWrapperCompat
 import androidx.appcompat.view.menu.MenuBuilder
 import androidx.appcompat.view.menu.MenuItemImpl
 import androidx.core.view.forEach
+import com.google.android.material.color.MaterialColors
 import com.ichi2.anki.R
-import com.ichi2.anki.UIUtils.convertDpToPixel
-import com.ichi2.themes.Themes
+import com.ichi2.anki.convertDpToPixel
 
 private fun Menu.forEachOverflowItemRecursive(block: (MenuItem) -> Unit) {
     (this as? MenuBuilder)?.flagActionItems()
@@ -44,10 +44,19 @@ private fun Menu.forEachOverflowItemRecursive(block: (MenuItem) -> Unit) {
 fun Context.increaseHorizontalPaddingOfOverflowMenuIcons(menu: Menu) {
     val extraPadding = convertDpToPixel(5f, this).toInt()
 
-    class Wrapper(drawable: Drawable) : DrawableWrapperCompat(drawable) {
+    class Wrapper(
+        drawable: Drawable,
+    ) : DrawableWrapperCompat(drawable) {
+        override fun mutate() = drawable!!.mutate() // DrawableWrapperCompat fails to delegate this
+
         override fun getIntrinsicWidth() = super.getIntrinsicWidth() + extraPadding * 2
 
-        override fun setBounds(left: Int, top: Int, right: Int, bottom: Int) {
+        override fun setBounds(
+            left: Int,
+            top: Int,
+            right: Int,
+            bottom: Int,
+        ) {
             super.setBounds(left + extraPadding, top, right - extraPadding, bottom)
         }
     }
@@ -60,16 +69,19 @@ fun Context.increaseHorizontalPaddingOfOverflowMenuIcons(menu: Menu) {
 }
 
 /**
- * Recursively tints the icons of the items of the given overflow or popup menu
+ * Recursively mutates and tints the icons of the items of the given overflow or popup menu
  * with the color [R.attr.overflowAndPopupMenuIconColor] that is specified in the theme.
  * Has no effect for items that have no icon.
  */
-fun Context.tintOverflowMenuIcons(menu: Menu, skipIf: ((MenuItem) -> Boolean)? = null) {
-    val iconColor = Themes.getColorFromAttr(this, R.attr.overflowAndPopupMenuIconColor)
+fun Context.tintOverflowMenuIcons(
+    menu: Menu,
+    skipIf: ((MenuItem) -> Boolean)? = null,
+) {
+    val iconColor = MaterialColors.getColor(this, R.attr.overflowAndPopupMenuIconColor, 0)
 
     menu.forEachOverflowItemRecursive { item ->
         if (skipIf == null || !skipIf(item)) {
-            item.icon?.setTint(iconColor)
+            item.icon?.mutate()?.setTint(iconColor)
         }
     }
 }

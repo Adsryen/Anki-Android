@@ -16,15 +16,18 @@
 package com.ichi2.compat.customtabs
 
 import android.app.Activity
+import android.content.Intent
 import android.content.pm.PackageManager
+import android.net.Uri
 import androidx.annotation.CheckResult
 import androidx.browser.customtabs.CustomTabsClient
+import com.ichi2.compat.CompatHelper.Companion.queryIntentActivitiesCompat
+import com.ichi2.compat.ResolveInfoFlagsCompat
 import org.hamcrest.CoreMatchers.not
 import org.hamcrest.MatcherAssert.assertThat
 import org.junit.Before
 import org.junit.Test
 import org.junit.runner.RunWith
-import org.mockito.ArgumentMatchers.anyInt
 import org.mockito.ArgumentMatchers.anyLong
 import org.mockito.ArgumentMatchers.anyString
 import org.mockito.Mockito.times
@@ -53,17 +56,23 @@ class CustomTabActivityHelperTest {
     }
 
     @Test
-    @Suppress("deprecation") // queryIntentActivities
     fun invalidClientMeansFallbackIsCalled() {
         getValidTabHandler().onServiceConnected(getClientThrowingSecurityException())
 
         val fallback = mock<CustomTabActivityHelper.CustomTabFallback>()
-        val packageManager = mock<PackageManager> {
-            on { it.queryIntentActivities(any(), anyInt()) } doReturn emptyList()
-        }
-        val activity = mock<Activity> {
-            on { it.packageManager } doReturn packageManager
-        }
+        val packageManager =
+            mock<PackageManager> {
+                on {
+                    it.queryIntentActivitiesCompat(
+                        Intent(Intent.ACTION_VIEW, Uri.parse("http://www.example.com")),
+                        ResolveInfoFlagsCompat.EMPTY,
+                    )
+                } doReturn emptyList()
+            }
+        val activity =
+            mock<Activity> {
+                on { it.packageManager } doReturn packageManager
+            }
 
         CustomTabActivityHelper.openCustomTab(activity, mock(), mock(), fallback)
 
@@ -71,9 +80,10 @@ class CustomTabActivityHelperTest {
     }
 
     @CheckResult
-    private fun getValidTabHandler(): CustomTabActivityHelper = CustomTabActivityHelper().also {
-        assertThat("Should not be failed before call", not(it.isFailed))
-    }
+    private fun getValidTabHandler(): CustomTabActivityHelper =
+        CustomTabActivityHelper().also {
+            assertThat("Should not be failed before call", not(it.isFailed))
+        }
 
     @CheckResult
     private fun getClientThrowingSecurityException(): CustomTabsClient {

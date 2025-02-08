@@ -19,6 +19,7 @@
     xmlns:android="http://schemas.android.com/apk/res/android"
     xmlns:app="http://schemas.android.com/apk/res-auto"
     xmlns:tools="http://schemas.android.com/tools"
+    android:fadeScrollbars="false"
     android:layout_width="match_parent"
     android:layout_height="wrap_content">
 <LinearLayout
@@ -48,8 +49,29 @@
         android:layout_width="wrap_content"
         android:layout_height="wrap_content"
         android:layout_marginTop="4dp"
-        android:layout_marginBottom="14dp"
         tools:text="2.x" />
+
+    <TextView
+        android:id="@+id/about_build_date"
+        style="?android:textAppearanceSmall"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        tools:text="13 Apr 2023" />
+
+    <TextView
+        android:id="@+id/about_backend"
+        style="?android:textAppearanceSmall"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        tools:text="(anki 23.10.1 / be74babb0)" />
+
+    <TextView
+        android:id="@+id/about_fsrs"
+        style="?android:textAppearanceSmall"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:layout_marginBottom="14dp"
+        tools:text="(FSRS 0.6.4)" />
 
     <TextView
         android:id="@+id/about_contributors_title"
@@ -86,7 +108,7 @@
         tools:text="AnkiDroid is released under the GPL-3.0 and AGPL-3.0 licenses, with the source code available on GitHub" />
 
     <TextView
-        android:id="@+id/about_license_title"
+        android:id="@+id/about_donate_title"
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
         android:layout_marginTop="20dp"
@@ -108,28 +130,28 @@
         android:layout_marginTop="32dp"
         android:orientation="vertical"
         android:gravity="center">
-        <Button
+        <com.google.android.material.button.MaterialButton
             android:id="@+id/about_rate"
-            android:background="@null"
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
             android:text="@string/info_rate"
+            style="@style/Widget.Material3.Button.TextButton"
             android:textColor="?attr/colorAccent" />
-        <Button
+        <com.google.android.material.button.MaterialButton
             android:id="@+id/about_open_changelog"
-            android:background="@null"
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
             android:text="@string/open_changelog"
+            style="@style/Widget.Material3.Button.TextButton"
             android:textColor="?attr/colorAccent"/>
-    <Button
-        android:id="@+id/about_copy_debug"
-        android:background="@null"
-        android:layout_width="wrap_content"
-        android:layout_height="wrap_content"
-        android:text="@string/feedback_copy_debug"
-        android:textColor="?attr/colorAccent"
-        android:layout_marginBottom="16dp"/>
+        <com.google.android.material.button.MaterialButton
+            android:id="@+id/about_copy_debug"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="@string/feedback_copy_debug"
+            android:textColor="?attr/colorAccent"
+            style="@style/Widget.Material3.Button.TextButton"
+            android:layout_marginBottom="16dp"/>
     </LinearLayout>
 </LinearLayout>
 </ScrollView>

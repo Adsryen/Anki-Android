@@ -22,15 +22,14 @@ import android.provider.MediaStore
 import android.webkit.MimeTypeMap
 import androidx.annotation.CheckResult
 import timber.log.Timber
-import java.io.File
-import java.lang.Exception
-import java.lang.IllegalStateException
-import java.util.*
 
 object ContentResolverUtil {
     /** Obtains the filename from the url. Throws if all methods return exception  */
     @CheckResult
-    fun getFileName(contentResolver: ContentResolver, uri: Uri): String {
+    fun getFileName(
+        contentResolver: ContentResolver,
+        uri: Uri,
+    ): String {
         try {
             val filename = getFilenameViaDisplayName(contentResolver, uri)
             if (filename != null) {
@@ -49,7 +48,10 @@ object ContentResolverUtil {
     }
 
     @CheckResult
-    private fun getFilenameViaMimeType(contentResolver: ContentResolver, uri: Uri): String? {
+    private fun getFilenameViaMimeType(
+        contentResolver: ContentResolver,
+        uri: Uri,
+    ): String? {
         // value: "png" when testing
         var extension: String? = null
 
@@ -62,16 +64,21 @@ object ContentResolverUtil {
             // If scheme is a File
             // This will replace white spaces with %20 and also other special characters. This will avoid returning null values on file name with spaces and special characters.
             if (uri.path != null) {
-                extension = MimeTypeMap.getFileExtensionFromUrl(Uri.fromFile(File(uri.path as String)).toString().lowercase(Locale.ROOT))
+                extension = AssetHelper.getFileExtensionFromFilePath(uri.path as String)
             }
         }
         return if (extension == null) {
             null
-        } else "image.$extension"
+        } else {
+            "image.$extension"
+        }
     }
 
     @CheckResult
-    private fun getFilenameViaDisplayName(contentResolver: ContentResolver, uri: Uri): String? {
+    private fun getFilenameViaDisplayName(
+        contentResolver: ContentResolver,
+        uri: Uri,
+    ): String? {
         // 7748: android.database.sqlite.SQLiteException: no such column: _display_name (code 1 SQLITE_ERROR[1]): ...
         try {
             contentResolver.query(uri, null, null, null, null).use { c ->

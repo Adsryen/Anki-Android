@@ -21,37 +21,47 @@ import android.content.Context
 import android.content.Intent
 import androidx.core.app.NotificationCompat
 import androidx.core.app.NotificationManagerCompat
-import androidx.core.content.ContextCompat
+import androidx.core.app.PendingIntentCompat
 import com.ichi2.anki.Channel
-import com.ichi2.anki.CollectionHelper
+import com.ichi2.anki.CollectionManager
 import com.ichi2.anki.IntentHandler
 import com.ichi2.anki.R
-import com.ichi2.compat.CompatHelper
 import com.ichi2.libanki.Collection
+import com.ichi2.libanki.Deck
+import com.ichi2.libanki.DeckConfigId
 import com.ichi2.libanki.DeckId
-import com.ichi2.libanki.sched.DeckDueTreeNode
-import org.json.JSONObject
+import com.ichi2.libanki.sched.DeckNode
 import timber.log.Timber
 
 class ReminderService : BroadcastReceiver() {
     /** Cancelling all deck reminder. We used to use them, now we have deck option reminders.  */
-    private fun cancelDeckReminder(context: Context, intent: Intent) {
+    private fun cancelDeckReminder(
+        context: Context,
+        intent: Intent,
+    ) {
         // 0 Is not a valid deck id.
         val deckId = intent.getLongExtra(EXTRA_DECK_ID, 0)
         if (deckId == 0L) {
             return
         }
         val alarmManager = context.getSystemService(Context.ALARM_SERVICE) as AlarmManager
-        val reminderIntent = CompatHelper.compat.getImmutableBroadcastIntent(
-            context,
-            deckId.toInt(),
-            Intent(context, ReminderService::class.java).putExtra(EXTRA_DECK_OPTION_ID, deckId),
-            0
-        )
-        alarmManager.cancel(reminderIntent)
+        val reminderIntent =
+            PendingIntentCompat.getBroadcast(
+                context,
+                deckId.toInt(),
+                Intent(context, ReminderService::class.java).putExtra(EXTRA_DECK_OPTION_ID, deckId),
+                0,
+                false,
+            )
+        if (reminderIntent != null) {
+            alarmManager.cancel(reminderIntent)
+        }
     }
 
-    override fun onReceive(context: Context, intent: Intent) {
+    override fun onReceive(
+        context: Context,
+        intent: Intent,
+    ) {
         cancelDeckReminder(context, intent)
 
         // 0 is not a valid dconf id.
@@ -60,28 +70,16 @@ class ReminderService : BroadcastReceiver() {
             Timber.w("onReceive - dConfId 0, returning")
             return
         }
-        val colHelper: CollectionHelper
-        val col: Collection?
-        try {
-            colHelper = CollectionHelper.instance
-            col = colHelper.getCol(context)
-        } catch (t: Throwable) {
-            Timber.w(t, "onReceive - unexpectedly unable to get collection. Returning.")
-            return
-        }
-        if (null == col || !colHelper.colIsOpen()) {
+        val col: Collection =
+            try {
+                CollectionManager.getColUnsafe()
+            } catch (t: Throwable) {
+                Timber.w(t, "onReceive - unexpectedly unable to get collection. Returning.")
+                return
+            }
+        if (!CollectionManager.isOpenUnsafe()) {
             Timber.w("onReceive - null or closed collection, unable to process reminders")
             return
-        }
-        if (col.decks.getConf(dConfId) == null) {
-            val alarmManager = context.getSystemService(Context.ALARM_SERVICE) as AlarmManager
-            val reminderIntent = CompatHelper.compat.getImmutableBroadcastIntent(
-                context,
-                dConfId.toInt(),
-                Intent(context, ReminderService::class.java).putExtra(EXTRA_DECK_OPTION_ID, dConfId),
-                0
-            )
-            alarmManager.cancel(reminderIntent)
         }
         val notificationManager = NotificationManagerCompat.from(context)
         if (!notificationManager.areNotificationsEnabled()) {
@@ -101,52 +99,55 @@ class ReminderService : BroadcastReceiver() {
                 continue
             }
             Timber.v("onReceive - deck '%s' due count %d", deckDue.fullDeckName, total)
-            val notification = NotificationCompat.Builder(
-                context,
-                Channel.DECK_REMINDERS.id
-            )
-                .setCategory(NotificationCompat.CATEGORY_REMINDER)
-                .setContentTitle(context.getString(R.string.reminder_title))
-                .setContentText(
-                    context.resources.getQuantityString(
-                        R.plurals.reminder_text,
-                        total,
-                        deckDue.fullDeckName,
-                        total
-                    )
-                )
-                .setSmallIcon(R.drawable.ic_stat_notify)
-                .setColor(ContextCompat.getColor(context, R.color.material_light_blue_700))
-                .setContentIntent(
-                    CompatHelper.compat.getImmutableActivityIntent(
+            val notification =
+                NotificationCompat
+                    .Builder(
                         context,
-                        deckId.toInt(),
-                        getReviewDeckIntent(context, deckId),
-                        PendingIntent.FLAG_UPDATE_CURRENT
-                    )
-                )
-                .setAutoCancel(true)
-                .build()
+                        Channel.DECK_REMINDERS.id,
+                    ).setCategory(NotificationCompat.CATEGORY_REMINDER)
+                    .setContentTitle(context.getString(R.string.reminder_title))
+                    .setContentText(
+                        context.resources.getQuantityString(
+                            R.plurals.reminder_text,
+                            total,
+                            deckDue.fullDeckName,
+                            total,
+                        ),
+                    ).setSmallIcon(R.drawable.ic_star_notify)
+                    .setColor(context.getColor(R.color.material_light_blue_700))
+                    .setContentIntent(
+                        PendingIntentCompat.getActivity(
+                            context,
+                            deckId.toInt(),
+                            getReviewDeckIntent(context, deckId),
+                            PendingIntent.FLAG_UPDATE_CURRENT,
+                            false,
+                        ),
+                    ).setAutoCancel(true)
+                    .build()
             notificationManager.notify(deckId.toInt(), notification)
             Timber.v("onReceive - notification state: %s", notification)
         }
     }
 
     // getDeckOptionDue information, will recur one time to workaround collection close if recur is true
-    private fun getDeckOptionDue(col: Collection, dConfId: Long, recur: Boolean): List<DeckDueTreeNode>? {
-
+    private fun getDeckOptionDue(
+        col: Collection,
+        dConfId: DeckConfigId,
+        recur: Boolean,
+    ): List<DeckNode>? {
         // Avoid crashes if the deck option group is deleted while we
         // are working
-        if (col.dbClosed || col.decks.getConf(dConfId) == null) {
+        if (col.dbClosed) {
             Timber.d("Deck option %s became unavailable while ReminderService was working. Ignoring", dConfId)
             return null
         }
         try {
-            val dues = col.sched.deckDueTree().map { it.value }
-            val decks: MutableList<DeckDueTreeNode> = ArrayList(dues.size)
+            val dues = col.sched.deckDueTree().children
+            val decks: MutableList<DeckNode> = ArrayList(dues.size)
             // This loop over top level deck only. No notification will ever occur for subdecks.
             for (node in dues) {
-                val deck: JSONObject? = col.decks.get(node.did, false)
+                val deck: Deck? = col.decks.get(node.did)
                 // Dynamic deck has no "conf", so are not added here.
                 if (deck != null && deck.optLong("conf") == dConfId) {
                     decks.add(node)
@@ -174,8 +175,9 @@ class ReminderService : BroadcastReceiver() {
         const val EXTRA_DECK_OPTION_ID = "EXTRA_DECK_OPTION_ID"
         const val EXTRA_DECK_ID = "EXTRA_DECK_ID"
 
-        fun getReviewDeckIntent(context: Context, deckId: DeckId): Intent {
-            return Intent(context, IntentHandler::class.java).putExtra(EXTRA_DECK_ID, deckId)
-        }
+        fun getReviewDeckIntent(
+            context: Context,
+            deckId: DeckId,
+        ): Intent = Intent(context, IntentHandler::class.java).putExtra(EXTRA_DECK_ID, deckId)
     }
 }

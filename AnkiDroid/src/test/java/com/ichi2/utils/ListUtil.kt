@@ -15,23 +15,22 @@
  ****************************************************************************************/
 package com.ichi2.utils
 
-import com.ichi2.testutils.assertThrows
 import org.junit.Assert
-import org.junit.Assert.assertThrows
 import org.junit.Test
 import org.junit.internal.ArrayComparisonFailure
 import java.lang.AssertionError
 import kotlin.Throws
+import kotlin.test.assertFailsWith
 
 class ListUtil {
     @Test
     fun equalsTest() {
-        assertThrows<ArrayComparisonFailure> { assertListEquals(listOf(2L, 3L), listOf(2L, 4L)) }
-        assertThrows<ArrayComparisonFailure> { assertListEquals(listOf(2L, 3L), listOf(2L)) }
-        assertThrows<ArrayComparisonFailure> { assertListEquals(listOf(2L, 3L), listOf(5L)) }
-        assertThrows<ArrayComparisonFailure> { assertListEquals(listOf(2L, 3L), listOf(2L, 3L, 5L)) }
-        assertThrows<AssertionError> { assertListEquals(listOf(2L, 3L), null) }
-        assertThrows<AssertionError> { assertListEquals(null, listOf(2L, 4L)) }
+        assertFailsWith<ArrayComparisonFailure> { assertListEquals(listOf(2L, 3L), listOf(2L, 4L)) }
+        assertFailsWith<ArrayComparisonFailure> { assertListEquals(listOf(2L, 3L), listOf(2L)) }
+        assertFailsWith<ArrayComparisonFailure> { assertListEquals(listOf(2L, 3L), listOf(5L)) }
+        assertFailsWith<ArrayComparisonFailure> { assertListEquals(listOf(2L, 3L), listOf(2L, 3L, 5L)) }
+        assertFailsWith<AssertionError> { assertListEquals(listOf(2L, 3L), null) }
+        assertFailsWith<AssertionError> { assertListEquals(null, listOf(2L, 4L)) }
         assertListEquals(null, null)
         assertListEquals(listOf(2L, 3L), listOf(2L, 3L))
     }
@@ -54,7 +53,7 @@ class ListUtil {
         fun assertListEquals(
             message: String?,
             expected: List<Any?>?,
-            actuals: List<Any?>?
+            actuals: List<Any?>?,
         ) {
             val expectedArray: Array<Any?>? = expected?.toTypedArray()
             val actualArray: Array<Any?>? = actuals?.toTypedArray()
@@ -72,7 +71,10 @@ class ListUtil {
          * @param actuals Object list or list of arrays (multi-dimensional array) with
          * actual values
          */
-        fun assertListEquals(expected: List<Any?>?, actuals: List<Any?>?) {
+        fun assertListEquals(
+            expected: List<Any?>?,
+            actuals: List<Any?>?,
+        ) {
             assertListEquals(null, expected, actuals)
         }
     }

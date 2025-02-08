@@ -20,48 +20,45 @@
 package com.ichi2.anki.multimediacard.fields
 
 import com.ichi2.libanki.Collection
-import com.ichi2.utils.KotlinCleanup
 import java.io.File
 import java.util.regex.Pattern
 
 /**
  * Implementation of Audio field types
  */
-abstract class AudioField : FieldBase(), IField {
-    private var mAudioPath: String? = null
-
-    override var imagePath: String? = null
-
-    override var audioPath: String?
-        get() = mAudioPath
+abstract class AudioField :
+    FieldBase(),
+    IField {
+    override var mediaPath: String? = null
+        get() = field
         set(value) {
-            mAudioPath = value
-            setThisModified()
+            field = value
+            thisModified = true
         }
 
     override var text: String? = null
 
     override var hasTemporaryMedia: Boolean = false
 
-    @KotlinCleanup("get() can be simplified with a scope function")
     override val formattedValue: String
-        get() {
-            if (audioPath == null) {
-                return ""
-            }
-            val file = File(audioPath!!)
-            return if (file.exists()) "[sound:${file.name}]" else ""
-        }
+        get() =
+            mediaPath?.let { path ->
+                val file = File(path)
+                if (file.exists()) "[sound:${file.name}]" else ""
+            } ?: ""
 
-    override fun setFormattedString(col: Collection, value: String) {
+    override fun setFormattedString(
+        col: Collection,
+        value: String,
+    ) {
         val p = Pattern.compile(PATH_REGEX)
         val m = p.matcher(value)
         var res = ""
         if (m.find()) {
             res = m.group(1)!!
         }
-        val mediaDir = col.media.dir() + "/"
-        audioPath = mediaDir + res
+        val mediaDir = col.media.dir + "/"
+        mediaPath = mediaDir + res
     }
 
     companion object {
