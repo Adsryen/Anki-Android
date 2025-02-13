@@ -48,12 +48,9 @@
     <string name="error_reporting_choice_ask_user">Fråga mig</string>
     <!-- leech_action_labels -->
     <!-- 01-core:menu_suspend_card -->
-    <string name="leech_action_tag_only">Endast etikett</string>
     <!-- new_order_labels -->
-    <string name="new_order_random">Nya kort i slumpmässig ordning</string>
-    <string name="new_order_order_added">Nya kort i ordningen de lades till</string>
     <!-- cram_deck_conf_order_labels -->
-    <string name="cram_deck_conf_order_oldest_seen_first">Äldst först</string>
+    <string name="cram_deck_conf_order_oldest_seen_first">Äldst sedd först</string>
     <string name="cram_deck_conf_order_random">Slumpmässigt</string>
     <string name="cram_deck_conf_order_increasing_intervals">Ökande intervall</string>
     <string name="cram_deck_conf_order_decreasing_intervals">Minskande intervall</string>
@@ -64,16 +61,9 @@
     <string name="cram_deck_conf_order_relative_overdueness">Relativ försening innan repetition</string>
     <!-- add_to_cur_labels -->
     <string name="add_to_deck_use_current_deck">Använd nuvarande kortlek</string>
-    <string name="add_to_deck_decide_by_note_type">Välj efter nottyp</string>
-    <!-- new_spread_labels -->
-    <string name="new_spread_mix_new_and_review">Blanda nya kort och repetitionskort</string>
-    <string name="new_spread_new_after_review">Nya kort efter repetitioner</string>
-    <string name="new_spread_new_before_review">Nya kort före repetitioner</string>
-    <!-- override_font_labels -->
-    <string name="override_font_if_missing">När inget typsnitt angetts på flashkort</string>
-    <string name="override_font_always">Alltid</string>
+    <string name="add_to_deck_decide_by_note_type">Välj efter anteckningstyp</string>
     <!-- theme labels -->
-    <string name="theme_follow_system">Follow system</string>
+    <string name="theme_follow_system">Följ systemet</string>
     <!-- day_theme_labels -->
     <string name="day_theme_light">Ljus</string>
     <string name="day_theme_plain">Enkel</string>
@@ -89,30 +79,27 @@
     <string name="html_size_code_x_large">x-large</string>
     <string name="html_size_code_xx_large">xx-large</string>
     <!-- gestures_labels -->
-    <string name="gesture_answer_1">Svarsknapp 1</string>
-    <string name="gesture_answer_2">Svarsknapp 2</string>
-    <string name="gesture_answer_3">Svarsknapp 3</string>
-    <string name="gesture_answer_4">Svarsknapp 4</string>
-    <string name="gesture_answer_green">Rekommenderat svar (grön)</string>
-    <string name="gesture_answer_better_recommended">Svar bättre än rekommenderat</string>
-    <string name="gesture_play">Spela upp media</string>
-    <string name="gesture_abort_learning">Avbryt inlärning</string>
-    <string name="gesture_flag_red">Växla Röd Flagga</string>
-    <string name="gesture_flag_orange">Växla Orange Flagga</string>
-    <string name="gesture_flag_green">Växla grön flagga</string>
-    <string name="gesture_flag_blue">Växla blå flagga</string>
-    <string name="gesture_flag_pink">Växa rosa flagga</string>
-    <string name="gesture_flag_turquoise">Växla turkos flagga</string>
-    <string name="gesture_flag_purple">Växla lila flagga</string>
-    <string name="gesture_flag_remove">Ta bort flagga</string>
-    <string name="gesture_page_up">Sida upp</string>
-    <string name="gesture_page_down">Sida ner</string>
-    <string name="gesture_abort_sync">Avbryt inlärning och synkronisera</string>
-    <string name="gesture_toggle_whiteboard">Växla whiteboard</string>
-    <string name="gesture_show_hint">Show Hint</string>
-    <string name="gesture_show_all_hints">Show All Hints</string>
-    <string name="record_voice">Spela in röst</string>
-    <string name="replay_voice">Återuppspela röst</string>
-    <string name="automatic_answer_option_2">Svårt (Bra om otillgängligt)</string>
-    <string name="automatic_answer_option_4">Lätt (bra om otillgängligt)</string>
+    <string name="answer_again" maxLength="41">Svara igen</string>
+    <string name="answer_hard" maxLength="41">Svara svår</string>
+    <string name="answer_good" maxLength="41">Svara bra</string>
+    <string name="answer_easy" maxLength="41">Svara lätt</string>
+    <string name="gesture_play" maxLength="41">Spela upp media</string>
+    <string name="gesture_abort_learning" maxLength="41">Stäng granskning</string>
+    <string name="gesture_flag_red" maxLength="41">Växla Röd flagga</string>
+    <string name="gesture_flag_orange" maxLength="41">Växla Orange flagga</string>
+    <string name="gesture_flag_green" maxLength="41">Växla Grön flagga</string>
+    <string name="gesture_flag_blue" maxLength="41">Växla Blå flagga</string>
+    <string name="gesture_flag_pink" maxLength="41">Växa Rosa flagga</string>
+    <string name="gesture_flag_turquoise" maxLength="41">Växla Turkos flagga</string>
+    <string name="gesture_flag_purple" maxLength="41">Växla Lila flagga</string>
+    <string name="gesture_flag_remove" maxLength="41">Ta bort flagga</string>
+    <string name="gesture_page_up" maxLength="41">Sida upp</string>
+    <string name="gesture_page_down" maxLength="41">Sida ner</string>
+    <string name="gesture_abort_sync" maxLength="41">Stäng granskning och Synkronisera</string>
+    <string name="gesture_toggle_whiteboard" maxLength="41">Växla Whiteboard</string>
+    <string name="gesture_show_hint" maxLength="41">Visa ledtråd</string>
+    <string name="gesture_show_all_hints" maxLength="41">Visa alla ledtrådar</string>
+    <string name="record_voice" maxLength="41">Spela in röst</string>
+    <string name="replay_voice" maxLength="41">Återuppspela röst</string>
+    <string name="save_voice" maxLength="41">Spara inspelning</string>
 </resources>

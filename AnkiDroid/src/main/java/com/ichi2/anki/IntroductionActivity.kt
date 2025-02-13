@@ -17,84 +17,63 @@
 
 package com.ichi2.anki
 
+import android.content.Context
 import android.content.Intent
 import android.os.Bundle
 import androidx.activity.result.ActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.core.content.edit
-import androidx.fragment.app.Fragment
-import com.afollestad.materialdialogs.MaterialDialog
-import com.github.appintro.AppIntro
-import com.github.appintro.AppIntroPageTransformerType
-import com.ichi2.anki.InitialActivity.StartupFailure
 import com.ichi2.anki.introduction.SetupCollectionFragment
-import com.ichi2.anki.introduction.SetupCollectionFragment.*
+import com.ichi2.anki.introduction.SetupCollectionFragment.CollectionSetupOption
 import com.ichi2.anki.introduction.SetupCollectionFragment.Companion.handleCollectionSetupOption
-import com.ichi2.anki.workarounds.AppLoadedFromBackupWorkaround.showedActivityFailedScreen
+import com.ichi2.anki.preferences.sharedPrefs
 import com.ichi2.annotations.NeedsTest
-import com.ichi2.themes.Themes
-import com.ichi2.themes.Themes.getColorFromAttr
 import timber.log.Timber
 
 /**
  * App introduction for new users.
- * TODO: Background of introduction_layout does not display on API 25 emulator: https://github.com/ankidroid/Anki-Android/pull/12033#issuecomment-1228429130
+ *
+ * Links to [LoginActivity] ("Sync from AnkiWeb") or [DeckPicker] ("Get Started")
+ *
+ * @see SetupCollectionFragment
  */
+// TODO: Background of introduction_layout does not display on API 25 emulator: https://github.com/ankidroid/Anki-Android/pull/12033#issuecomment-1228429130
 @NeedsTest("Ensure that we can get here on first run without an exception dialog shown")
-class IntroductionActivity : AppIntro() {
-
-    private val onLoginResult = registerForActivityResult(ActivityResultContracts.StartActivityForResult()) { result: ActivityResult ->
-        if (result.resultCode == RESULT_OK) {
-            startDeckPicker(RESULT_SYNC_PROFILE)
-        } else {
-            Timber.i("login was not successful")
+class IntroductionActivity : AnkiActivity() {
+    @NeedsTest("ensure this is called when the activity ends")
+    private val onLoginResult =
+        registerForActivityResult(ActivityResultContracts.StartActivityForResult()) { result: ActivityResult ->
+            if (result.resultCode == RESULT_OK) {
+                Timber.i("login successful, opening deck picker to sync")
+                startDeckPicker(RESULT_SYNC_PROFILE)
+            } else {
+                Timber.i("login was not successful")
+            }
         }
-    }
 
     override fun onCreate(savedInstanceState: Bundle?) {
         if (showedActivityFailedScreen(savedInstanceState)) {
             return
         }
-
         super.onCreate(savedInstanceState)
-
-        // Check for WebView related error
-        val startupFailure = InitialActivity.getStartupFailureType(this)
-        startupFailure?.let {
-            handleStartupFailure(it)
-        }
-        Themes.setTheme(this)
-
-        setTransformer(AppIntroPageTransformerType.Zoom)
-
-        addSlide(SetupCollectionFragment())
+        setContentView(R.layout.introduction_activity)
 
         handleCollectionSetupOption { option ->
             when (option) {
-                CollectionSetupOption.DeckPickerWithNewCollection -> startDeckPicker(RESULT_START_NEW)
+                CollectionSetupOption.DeckPickerWithNewCollection -> startDeckPicker()
                 CollectionSetupOption.SyncFromExistingAccount -> openLoginDialog()
             }
         }
-
-        this.setColorDoneText(getColorFromAttr(this, android.R.attr.textColorPrimary))
     }
 
     private fun openLoginDialog() {
+        Timber.i("Opening login screen")
         onLoginResult.launch(Intent(this, LoginActivity::class.java))
     }
 
-    override fun onSkipPressed(currentFragment: Fragment?) {
-        super.onSkipPressed(currentFragment)
-        startDeckPicker(RESULT_START_NEW)
-    }
-
-    override fun onDonePressed(currentFragment: Fragment?) {
-        super.onDonePressed(currentFragment)
-        startDeckPicker(RESULT_START_NEW)
-    }
-
     private fun startDeckPicker(result: Int = RESULT_START_NEW) {
-        AnkiDroidApp.getSharedPrefs(this).edit { putBoolean(INTRODUCTION_SLIDES_SHOWN, true) }
+        Timber.i("Opening deck picker, login: %b", result == RESULT_SYNC_PROFILE)
+        this.sharedPrefs().edit { putBoolean(INTRODUCTION_SLIDES_SHOWN, true) }
         val deckPicker = Intent(this, DeckPicker::class.java)
         deckPicker.addFlags(Intent.FLAG_ACTIVITY_CLEAR_TOP or Intent.FLAG_ACTIVITY_NEW_TASK)
         if (result == RESULT_SYNC_PROFILE) {
@@ -105,33 +84,16 @@ class IntroductionActivity : AppIntro() {
         finish()
     }
 
-    /**
-     * When WebView is not available on a device, then error message indicating
-     * the same needs to be shown.
-     * @param startupFailure Type of error on startup
-     */
-    // TODO: Factor this into the AppLoadedFromBackupWorkaround class
-    private fun handleStartupFailure(startupFailure: StartupFailure) {
-        if (startupFailure == StartupFailure.WEBVIEW_FAILED) {
-            MaterialDialog(this).show {
-                title(R.string.ankidroid_init_failed_webview_title)
-                message(R.string.ankidroid_init_failed_webview, AnkiDroidApp.webViewErrorMessage)
-                positiveButton(R.string.close) { finish() }
-                cancelable(false)
-            }
-        }
-    }
-
-    private fun showedActivityFailedScreen(savedInstanceState: Bundle?) =
-        showedActivityFailedScreen(
-            savedInstanceState = savedInstanceState,
-            activitySuperOnCreate = { state -> super.onCreate(state) }
-        )
-
     companion object {
         const val RESULT_START_NEW = 1
         const val RESULT_SYNC_PROFILE = 2
 
+        /**
+         * Key for the preference recording that the slide "Study less/ Remember more" offering to
+         * get started or sync from ankiweb, was displayed. If so don't display it again.
+         */
         const val INTRODUCTION_SLIDES_SHOWN = "IntroductionSlidesShown"
     }
 }
+
+internal fun Context.hasShownAppIntro(): Boolean = sharedPrefs().getBoolean(IntroductionActivity.INTRODUCTION_SLIDES_SHOWN, false)

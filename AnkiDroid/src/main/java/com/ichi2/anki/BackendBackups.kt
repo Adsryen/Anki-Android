@@ -14,14 +14,13 @@
  * this program.  If not, see <http://www.gnu.org/licenses/>.                           *
  ****************************************************************************************/
 
-// BackendFactory.defaultLegacySchema must be false to use this code.
-
 package com.ichi2.anki
 
 import com.ichi2.anki.CollectionManager.withCol
-import com.ichi2.libanki.awaitBackupCompletion
 import com.ichi2.libanki.createBackup
-import kotlinx.coroutines.*
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.withContext
 
 fun DeckPicker.performBackupInBackground() {
     launchCatchingTask {
@@ -32,7 +31,7 @@ fun DeckPicker.performBackupInBackground() {
     }
 }
 
-fun DeckPicker.importColpkg(colpkgPath: String) {
+fun <Activity> Activity.importColpkg(colpkgPath: String) where Activity : AnkiActivity, Activity : ImportColpkgListener {
     launchCatchingTask {
         withProgress(
             extractProgress = {
@@ -44,19 +43,21 @@ fun DeckPicker.importColpkg(colpkgPath: String) {
             CollectionManager.importColpkg(colpkgPath)
         }
 
-        invalidateOptionsMenu()
-        updateDeckList()
+        onImportColpkg(colpkgPath)
     }
 }
 
 private suspend fun createBackup(force: Boolean) {
     withCol {
         // this two-step approach releases the backend lock after the initial copy
-        newBackend.createBackup(
+        createBackup(
             BackupManager.getBackupDirectoryFromCollection(this.path),
             force,
-            waitForCompletion = false
+            waitForCompletion = false,
         )
-        newBackend.awaitBackupCompletion()
+    }
+    // move this outside 'withCol' to avoid blocking
+    withContext(Dispatchers.IO) {
+        CollectionManager.getBackend().awaitBackupCompletion()
     }
 }

@@ -8,7 +8,7 @@ var resizeDone = false;
   handle image resizing on its own, but for older versions of WebView,
   we do it here.
 
-  If we are resizing with JavasSript, we also account for the CSS zoom
+  If we are resizing with JavaScript, we also account for the CSS zoom
   level applied to the image. If an image is scaled with CSS zoom, the
   dimensions given to us by the browser will not be scaled
   accordingly, giving us only the original dimensions. We have to
@@ -93,70 +93,17 @@ function buttonAnswerEase3() {
 function buttonAnswerEase4() {
     window.location.href = "signal:answer_ease4";
 }
-// Show options menu
-function ankiShowOptionsMenu() {
-    window.location.href = "signal:anki_show_options_menu";
-}
-
-// Show Navigation Drawer
-function ankiShowNavDrawer() {
-    window.location.href = "signal:anki_show_navigation_drawer";
-}
 
 /* Reload card.html */
 function reloadPage() {
     window.location.href = "signal:reload_card_html";
 }
 
-// Mark current card
-function ankiMarkCard() {
-    window.location.href = "signal:mark_current_card";
-}
-
-/* Toggle flag on card from AnkiDroid Webview using JavaScript
-    Possible values: "none", "red", "orange", "green", "blue"
-    See AnkiDroid Manual for Usage
-*/
-function ankiToggleFlag(flag) {
-    var flagVal = Number.isInteger(flag);
-
-    if (flagVal) {
-        switch (flag) {
-            case 0:
-                window.location.href = "signal:flag_none";
-                break;
-            case 1:
-                window.location.href = "signal:flag_red";
-                break;
-            case 2:
-                window.location.href = "signal:flag_orange";
-                break;
-            case 3:
-                window.location.href = "signal:flag_green";
-                break;
-            case 4:
-                window.location.href = "signal:flag_blue";
-                break;
-            default:
-                console.log("No Flag Found");
-                break;
-        }
-    } else {
-        window.location.href = "signal:flag_" + flag;
-    }
-}
-
-// Show toast using js
-function ankiShowToast(message) {
-    var msg = encodeURI(message);
-    window.location.href = "signal:anki_show_toast:" + msg;
-}
-
-/* Tell the app the text in the input box when it loses focus */
-function taBlur(itag) {
+/* Inform the app of the current 'type in the answer' value */
+function taChange(itag) {
     //#5944 - percent wasn't encoded, but Mandarin was.
     var encodedVal = encodeURI(itag.value);
-    window.location.href = "typeblurtext:" + encodedVal;
+    window.location.href = "typechangetext:" + encodedVal;
 }
 
 /* Look at the text entered into the input box and send the text on a return */
@@ -215,6 +162,8 @@ var onPageFinished = function () {
 
     var card = document.querySelector(".card");
 
+    var typedElement = document.getElementsByName("typed")[0];
+
     _runHook(onUpdateHook)
         .then(() => {
             if (window.MathJax != null) {
@@ -225,7 +174,7 @@ var onPageFinished = function () {
                    renders content.  We hide all the content until MathJax renders, because otherwise
                    the content loads, and has to reflow after MathJax renders, and it's unsightly.
                    However, if we hide all the content every time, folks don't like the repainting after
-                   every question or answer.  This is a middleground, where there is no repainting due to
+                   every question or answer.  This is a middle-ground, where there is no repainting due to
                    MathJax on non-MathJax cards, and on MathJax cards, there is a small flicker, but there's
                    no reflowing because the content only shows after MathJax has rendered. */
 
@@ -237,6 +186,12 @@ var onPageFinished = function () {
             }
         })
         .then(() => card.classList.add("mathjax-rendered"))
+        .then(() => {
+            // Focus if the element contains the attribute
+            if (typedElement && typedElement.getAttribute("data-focus")) {
+                typedElement.focus();
+            }
+        })
         .then(_runHook(onShownHook));
 };
 
@@ -246,6 +201,9 @@ var onPageFinished = function () {
 function addHook(fn1, fn2) {
     if (fn1 === "ankiSearchCard") {
         searchCardHook.push(fn2);
+    }
+    if (fn1 === "ankiSttResult") {
+        speechToTextHook.push(fn2);
     }
 }
 
@@ -258,6 +216,19 @@ function ankiSearchCard(result) {
     result = JSON.parse(result);
     for (var i = 0; i < searchCardHook.length; i++) {
         searchCardHook[i](result);
+    }
+}
+
+// hook for getting speech to text result in callback method
+let speechToTextHook = [];
+function ankiSttResult(result) {
+    if (!speechToTextHook) {
+        return;
+    }
+    result = JSON.parse(result);
+    result.value = JSON.parse(result.value);
+    for (var i = 0; i < speechToTextHook.length; i++) {
+        speechToTextHook[i](result);
     }
 }
 
@@ -275,4 +246,17 @@ function showAllHints() {
     document.querySelectorAll("a.hint").forEach(el => {
         el.click();
     });
+}
+
+function userAction(number) {
+    try {
+        let userJs = globalThis[`userJs${number}`];
+        if (userJs != null) {
+            userJs();
+        } else {
+            window.location.href = `missing-user-action:${number}`;
+        }
+    } catch (e) {
+        alert(e);
+    }
 }

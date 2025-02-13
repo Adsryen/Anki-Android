@@ -17,38 +17,16 @@
 package com.ichi2.anki
 
 import android.app.Activity
-import android.util.DisplayMetrics
+import android.content.res.Configuration
 import android.view.View
 import androidx.test.espresso.UiController
 import androidx.test.espresso.ViewAction
 import androidx.test.platform.app.InstrumentationRegistry
 import androidx.test.runner.lifecycle.ActivityLifecycleMonitorRegistry
 import androidx.test.runner.lifecycle.Stage
-import com.ichi2.utils.KotlinCleanup
-import org.hamcrest.Description
 import org.hamcrest.Matcher
-import org.hamcrest.TypeSafeMatcher
 
-@KotlinCleanup("IDE Lint")
 object TestUtils {
-    /**
-     * Get view at a particular index when there are multiple views with the same ID
-     */
-    fun withIndex(matcher: Matcher<View?>, index: Int): Matcher<View> {
-        return object : TypeSafeMatcher<View>() {
-            var currentIndex = 0
-            override fun describeTo(description: Description) {
-                description.appendText("with index: ")
-                description.appendValue(index)
-                matcher.describeTo(description)
-            }
-
-            public override fun matchesSafely(view: View?): Boolean {
-                return matcher.matches(view) && currentIndex++ == index
-            }
-        }
-    }
-
     /**
      * Get instance of current activity
      */
@@ -58,7 +36,7 @@ object TestUtils {
             InstrumentationRegistry.getInstrumentation().runOnMainSync {
                 val resumedActivities: Collection<*> =
                     ActivityLifecycleMonitorRegistry.getInstance().getActivitiesInStage(
-                        Stage.RESUMED
+                        Stage.RESUMED,
                     )
                 if (resumedActivities.iterator().hasNext()) {
                     val currentActivity = resumedActivities.iterator().next() as Activity
@@ -69,38 +47,34 @@ object TestUtils {
         }
 
     /**
-     * Returns true if device is a tablet
+     * Returns true if device is a tablet - tablet layout is in 'xlarge' values overlay,
+     * so test for that screen layout in our resources configuration
      */
-    @Suppress("deprecation") // #9333: getDefaultDisplay & getMetrics
-    val isScreenSw600dp: Boolean
-        get() {
-            val displayMetrics = DisplayMetrics()
-            activityInstance!!.windowManager.defaultDisplay.getMetrics(displayMetrics)
-            val widthDp = displayMetrics.widthPixels / displayMetrics.density
-            val heightDp = displayMetrics.heightPixels / displayMetrics.density
-            val screenSw = Math.min(widthDp, heightDp)
-            return screenSw >= 600
-        }
+    val isTablet: Boolean
+        get() =
+            (
+                activityInstance!!.resources.configuration.screenLayout and
+                    Configuration.SCREENLAYOUT_SIZE_MASK
+            ) ==
+                Configuration.SCREENLAYOUT_SIZE_XLARGE
 
     /**
      * Click on a view using its ID inside a RecyclerView item
      */
-    fun clickChildViewWithId(id: Int): ViewAction {
-        return object : ViewAction {
-            override fun getConstraints(): Matcher<View>? {
-                return null
-            }
+    fun clickChildViewWithId(id: Int): ViewAction =
+        object : ViewAction {
+            override fun getConstraints(): Matcher<View>? = null
 
-            override fun getDescription(): String {
-                return "Click on a child view with specified id."
-            }
+            override fun getDescription(): String = "Click on a child view with specified id."
 
-            override fun perform(uiController: UiController, view: View) {
+            override fun perform(
+                uiController: UiController,
+                view: View,
+            ) {
                 val v = view.findViewById<View>(id)
                 v.performClick()
             }
         }
-    }
 
     /** @return if the instrumented tests were built on a CI machine
      */

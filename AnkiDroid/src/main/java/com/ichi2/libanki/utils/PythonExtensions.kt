@@ -16,11 +16,10 @@
 
 package com.ichi2.libanki.utils
 
-import android.text.TextUtils
 import com.ichi2.utils.jsonObjectIterable
 import org.json.JSONArray
 import org.json.JSONObject
-import java.util.*
+import java.util.Optional
 
 fun <T> MutableList<T>.append(value: T) {
     this.add(value)
@@ -30,35 +29,20 @@ fun <T> MutableList<T>.extend(elements: Iterable<T>) {
     this.addAll(elements)
 }
 
-fun <T> len(l: Sequence<T>): Long {
-    return l.count().toLong()
-}
+fun <T> len(l: Sequence<T>): Long = l.count().toLong()
 
-fun <T> len(l: List<T>): Int {
-    return l.size
-}
+fun <T> len(l: List<T>): Int = l.size
 
-fun len(l: JSONArray): Long {
-    return l.length().toLong()
-}
+fun len(l: JSONArray): Long = l.length().toLong()
 
-fun <E> MutableList<E>.pop(i: Int): E {
-    return this.removeAt(i)
-}
+fun <E> MutableList<E>.pop(i: Int): E = this.removeAt(i)
 
-fun <K, V> HashMap<K, V>.items(): List<Pair<K, V>> {
-    return this.entries.map {
+fun <K, V> HashMap<K, V>.items(): List<Pair<K, V>> =
+    this.entries.map {
         Pair(it.key, it.value)
     }
-}
 
-fun <T> List<T>?.isNullOrEmpty(): Boolean {
-    return this == null || this.isEmpty()
-}
-
-fun <T> List<T>?.isNotNullOrEmpty(): Boolean {
-    return !this.isNullOrEmpty()
-}
+fun <T> List<T>?.isNullOrEmpty(): Boolean = this == null || this.isEmpty()
 
 fun <T> list(vararg elements: T) = mutableListOf(elements)
 
@@ -66,9 +50,7 @@ fun <T> list(values: Collection<T>): List<T> = ArrayList(values)
 
 fun <T> set(values: List<T>): HashSet<T> = HashSet(values)
 
-fun String.join(values: Iterable<String>): String {
-    return TextUtils.join(this, values)
-}
+fun String.join(values: Iterable<String>): String = values.joinToString(this)
 
 fun <E> MutableList<E>.toJsonArray(): JSONArray {
     val array = JSONArray()
@@ -76,13 +58,6 @@ fun <E> MutableList<E>.toJsonArray(): JSONArray {
         array.put(i)
     }
     return array
-}
-
-fun <K, V : Any> Map<K, V>.getOptional(k: K): Optional<V> {
-    if (!this.containsKey(k)) {
-        return Optional.empty()
-    }
-    return Optional.of(this[k]!!)
 }
 
 fun JSONArray.remove(jsonObject: JSONObject) {
@@ -94,8 +69,7 @@ fun JSONArray.remove(jsonObject: JSONObject) {
 }
 
 fun JSONArray.index(jsonObject: JSONObject): Optional<Int> {
-    this.jsonObjectIterable().forEachIndexed {
-            i, value ->
+    this.jsonObjectIterable().forEachIndexed { i, value ->
         run {
             if (jsonObject == value) {
                 return Optional.of(i)
@@ -105,7 +79,24 @@ fun JSONArray.index(jsonObject: JSONObject): Optional<Int> {
     return Optional.empty()
 }
 
-operator fun JSONObject.set(s: String, value: String) {
+operator fun JSONObject.set(
+    s: String,
+    value: String,
+) {
+    this.put(s, value)
+}
+
+operator fun JSONObject.set(
+    s: String,
+    value: Int,
+) {
+    this.put(s, value)
+}
+
+operator fun JSONObject.set(
+    s: String,
+    value: Double,
+) {
     this.put(s, value)
 }
 
@@ -120,7 +111,10 @@ fun JSONArray.append(jsonObject: JSONObject) {
  * so `a.insert(0, x)` inserts at the front of the list,
  * and `a.insert(len(a), x)` is equivalent to `a.append(x)`.
  */
-fun JSONArray.insert(idx: Int, jsonObject: JSONObject) {
+fun JSONArray.insert(
+    idx: Int,
+    jsonObject: JSONObject,
+) {
     if (idx >= this.length()) {
         this.put(jsonObject)
         return

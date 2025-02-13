@@ -20,75 +20,94 @@ import android.content.SharedPreferences
 import android.view.KeyEvent
 import com.ichi2.anki.AnkiDroidApp
 import com.ichi2.anki.cardviewer.ViewerCommand
-import com.ichi2.anki.reviewer.Binding.Companion.key
+import com.ichi2.anki.preferences.sharedPrefs
+import com.ichi2.anki.reviewer.Binding.Companion.possibleKeyBindings
 import com.ichi2.anki.reviewer.CardSide.Companion.fromAnswer
 import com.ichi2.anki.reviewer.MappableBinding.Companion.fromPreference
-import java.util.HashMap
+import com.ichi2.anki.reviewer.MappableBinding.Screen
 
 /** Accepts peripheral input, mapping via various keybinding strategies,
  * and converting them to commands for the Reviewer.  */
-class PeripheralKeymap(reviewerUi: ReviewerUi, commandProcessor: ViewerCommand.CommandProcessor) {
-    private val mKeyMap: KeyMap
-    private var mHasSetup = false
+class PeripheralKeymap(
+    reviewerUi: ReviewerUi,
+    commandProcessor: ViewerCommand.CommandProcessor,
+) {
+    private val keyMap: KeyMap = KeyMap(commandProcessor, reviewerUi) { Screen.Reviewer(it) }
+    private var hasSetup = false
+
     fun setup() {
-        val preferences = AnkiDroidApp.getSharedPrefs(AnkiDroidApp.instance)
+        val preferences = AnkiDroidApp.instance.sharedPrefs()
         setup(preferences)
     }
 
     fun setup(preferences: SharedPreferences) {
-        for (command in ViewerCommand.values()) {
+        for (command in ViewerCommand.entries) {
             add(command, preferences)
         }
-        mHasSetup = true
+        hasSetup = true
     }
 
-    private fun add(command: ViewerCommand, preferences: SharedPreferences) {
-        val bindings: MutableList<MappableBinding> = fromPreference(preferences, command)
+    private fun add(
+        command: ViewerCommand,
+        preferences: SharedPreferences,
+    ) {
+        val bindings =
+            fromPreference(preferences, command)
+                .filter { it.screen is Screen.Reviewer }
         for (b in bindings) {
             if (!b.isKey) {
                 continue
             }
-            mKeyMap[b] = command
+            keyMap[b] = command
         }
     }
 
-    fun onKeyDown(keyCode: Int, event: KeyEvent): Boolean {
-        return if (!mHasSetup || event.repeatCount > 0) {
+    fun onKeyDown(
+        keyCode: Int,
+        event: KeyEvent,
+    ): Boolean =
+        if (!hasSetup || event.repeatCount > 0) {
             false
-        } else mKeyMap.onKeyUp(keyCode, event)
-    }
+        } else {
+            keyMap.onKeyDown(keyCode, event)
+        }
 
     @Suppress("UNUSED_PARAMETER")
-    fun onKeyUp(keyCode: Int, event: KeyEvent?): Boolean {
-        return false
-    }
+    fun onKeyUp(
+        keyCode: Int,
+        event: KeyEvent?,
+    ): Boolean = false
 
-    class KeyMap(private val processor: ViewerCommand.CommandProcessor, private val reviewerUI: ReviewerUi) {
-        val mBindingMap = HashMap<MappableBinding, ViewerCommand>()
+    class KeyMap(
+        private val processor: ViewerCommand.CommandProcessor,
+        private val reviewerUI: ReviewerUi,
+        private val screenBuilder: (CardSide) -> Screen,
+    ) {
+        val bindingMap = HashMap<MappableBinding, ViewerCommand>()
 
         @Suppress("UNUSED_PARAMETER")
-        fun onKeyUp(keyCode: Int, event: KeyEvent?): Boolean {
+        fun onKeyDown(
+            keyCode: Int,
+            event: KeyEvent?,
+        ): Boolean {
             var ret = false
-            val bindings = key(event!!)
+            val bindings = possibleKeyBindings(event!!)
             val side = fromAnswer(reviewerUI.isDisplayingAnswer)
             for (b in bindings) {
-                val binding = MappableBinding(b, MappableBinding.Screen.Reviewer(side))
-                val command = mBindingMap[binding] ?: continue
+                val binding = MappableBinding(b, screenBuilder(side))
+                val command = bindingMap[binding] ?: continue
                 ret = ret or processor.executeCommand(command, fromGesture = null)
             }
             return ret
         }
 
-        operator fun set(key: MappableBinding, value: ViewerCommand) {
-            mBindingMap[key] = value
+        operator fun set(
+            key: MappableBinding,
+            value: ViewerCommand,
+        ) {
+            bindingMap[key] = value
         }
 
-        operator fun get(key: MappableBinding): ViewerCommand? {
-            return mBindingMap[key]
-        }
-    }
-
-    init {
-        mKeyMap = KeyMap(commandProcessor, reviewerUi)
+        operator fun get(key: MappableBinding): ViewerCommand? = bindingMap[key]
     }
 }

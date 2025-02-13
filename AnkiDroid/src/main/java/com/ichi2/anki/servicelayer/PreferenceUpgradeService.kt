@@ -19,32 +19,58 @@ import android.content.Context
 import android.content.SharedPreferences
 import android.view.KeyEvent
 import androidx.annotation.VisibleForTesting
+import androidx.appcompat.app.AppCompatDelegate
 import androidx.core.content.edit
-import androidx.core.net.toUri
-import com.ichi2.anki.AnkiDroidApp
+import androidx.core.os.LocaleListCompat
+import com.ichi2.anki.analytics.UsageAnalytics
+import com.ichi2.anki.browser.BrowserColumnCollection
+import com.ichi2.anki.browser.CardBrowserColumn.ANSWER
+import com.ichi2.anki.browser.CardBrowserColumn.CARD
+import com.ichi2.anki.browser.CardBrowserColumn.CHANGED
+import com.ichi2.anki.browser.CardBrowserColumn.CREATED
+import com.ichi2.anki.browser.CardBrowserColumn.DECK
+import com.ichi2.anki.browser.CardBrowserColumn.DUE
+import com.ichi2.anki.browser.CardBrowserColumn.EASE
+import com.ichi2.anki.browser.CardBrowserColumn.EDITED
+import com.ichi2.anki.browser.CardBrowserColumn.INTERVAL
+import com.ichi2.anki.browser.CardBrowserColumn.LAPSES
+import com.ichi2.anki.browser.CardBrowserColumn.NOTE_TYPE
+import com.ichi2.anki.browser.CardBrowserColumn.QUESTION
+import com.ichi2.anki.browser.CardBrowserColumn.REVIEWS
+import com.ichi2.anki.browser.CardBrowserColumn.SFLD
+import com.ichi2.anki.browser.CardBrowserColumn.TAGS
 import com.ichi2.anki.cardviewer.Gesture
 import com.ichi2.anki.cardviewer.ViewerCommand
+import com.ichi2.anki.model.CardsOrNotes
 import com.ichi2.anki.noteeditor.CustomToolbarButton
+import com.ichi2.anki.preferences.sharedPrefs
 import com.ichi2.anki.reviewer.Binding
 import com.ichi2.anki.reviewer.Binding.Companion.keyCode
 import com.ichi2.anki.reviewer.CardSide
 import com.ichi2.anki.reviewer.FullScreenMode
 import com.ichi2.anki.reviewer.MappableBinding
-import com.ichi2.anki.web.CustomSyncServer
+import com.ichi2.anki.reviewer.MappableBinding.Companion.toPreferenceString
+import com.ichi2.anki.reviewer.screenBuilder
 import com.ichi2.libanki.Consts
-import com.ichi2.themes.Themes
-import com.ichi2.utils.HashUtil.HashSetInit
+import com.ichi2.utils.HashUtil.hashSetInit
 import timber.log.Timber
+import java.util.Locale
+import kotlin.collections.ArrayList
 
 private typealias VersionIdentifier = Int
 private typealias LegacyVersionIdentifier = Long
 
 object PreferenceUpgradeService {
-    fun upgradePreferences(context: Context?, previousVersionCode: LegacyVersionIdentifier): Boolean =
-        upgradePreferences(AnkiDroidApp.getSharedPrefs(context), previousVersionCode)
+    fun upgradePreferences(
+        context: Context,
+        previousVersionCode: LegacyVersionIdentifier,
+    ): Boolean = upgradePreferences(context.sharedPrefs(), previousVersionCode)
 
     /** @return Whether any preferences were upgraded */
-    internal fun upgradePreferences(preferences: SharedPreferences, previousVersionCode: LegacyVersionIdentifier): Boolean {
+    internal fun upgradePreferences(
+        preferences: SharedPreferences,
+        previousVersionCode: LegacyVersionIdentifier,
+    ): Boolean {
         val pendingPreferenceUpgrades = PreferenceUpgrade.getPendingUpgrades(preferences, previousVersionCode)
 
         pendingPreferenceUpgrades.forEach {
@@ -59,44 +85,59 @@ object PreferenceUpgradeService {
      * Typically because the app has been run for the first time, or the preferences
      * have been deleted
      */
-    @JvmStatic // reqired for mockito for now
+    @JvmStatic // required for mockito for now
     fun setPreferencesUpToDate(preferences: SharedPreferences) {
         Timber.i("Marking preferences as up to date")
         PreferenceUpgrade.setPreferenceToLatestVersion(preferences)
     }
 
-    abstract class PreferenceUpgrade private constructor(val versionIdentifier: VersionIdentifier) {
+    abstract class PreferenceUpgrade private constructor(
+        val versionIdentifier: VersionIdentifier,
+    ) {
         /*
         To add a new preference upgrade:
-          * yield a new class from getAllInstances (do not use `legacyPreviousVersionCode` in the constructor)
-          * Implement the upgrade() method
-          * Set mVersionIdentifier to 1 more than the previous versionIdentifier
-          * Run tests in PreferenceUpgradeServiceTest
+         * yield a new class from getAllInstances (do not use `legacyPreviousVersionCode` in the constructor)
+         * Implement the upgrade() method
+         * Set mVersionIdentifier to 1 more than the previous versionIdentifier
+         * Run tests in PreferenceUpgradeServiceTest
          */
 
         companion object {
             /** A version code where the value doesn't matter as we're not using the result */
             private const val IGNORED_LEGACY_VERSION_CODE = 0L
-            const val upgradeVersionPrefKey = "preferenceUpgradeVersion"
+            const val UPGRADE_VERSION_PREF_KEY = "preferenceUpgradeVersion"
 
             /** Returns all instances of preference upgrade classes */
-            internal fun getAllInstances(legacyPreviousVersionCode: LegacyVersionIdentifier) = sequence<PreferenceUpgrade> {
-                yield(LegacyPreferenceUpgrade(legacyPreviousVersionCode))
-                yield(RemoveLegacyMediaSyncUrl())
-                yield(UpdateNoteEditorToolbarPrefs())
-                yield(UpgradeGesturesToControls())
-                yield(UpgradeDayAndNightThemes())
-                yield(UpgradeCustomCollectionSyncUrl())
-                yield(UpgradeCustomSyncServerEnabled())
-            }
+            private fun getAllInstances(legacyPreviousVersionCode: LegacyVersionIdentifier) =
+                sequence {
+                    yield(LegacyPreferenceUpgrade(legacyPreviousVersionCode))
+                    yield(UpdateNoteEditorToolbarPrefs())
+                    yield(UpgradeGesturesToControls())
+                    yield(UpgradeDayAndNightThemes())
+                    yield(UpgradeFetchMedia())
+                    yield(UpgradeAppLocale())
+                    yield(RemoveScrollingButtons())
+                    yield(RemoveAnswerRecommended())
+                    yield(RemoveBackupMax())
+                    yield(RemoveInCardsMode())
+                    yield(RemoveReviewerETA())
+                    yield(SetShowDeckTitle())
+                    yield(ResetAnalyticsOptIn())
+                    yield(RemoveNoCodeFormatting())
+                    yield(UpgradeBrowserColumns())
+                }
 
             /** Returns a list of preference upgrade classes which have not been applied */
-            fun getPendingUpgrades(preferences: SharedPreferences, legacyPreviousVersionCode: LegacyVersionIdentifier): List<PreferenceUpgrade> {
+            fun getPendingUpgrades(
+                preferences: SharedPreferences,
+                legacyPreviousVersionCode: LegacyVersionIdentifier,
+            ): List<PreferenceUpgrade> {
                 val currentPrefVersion: VersionIdentifier = getPreferenceVersion(preferences)
 
-                return getAllInstances(legacyPreviousVersionCode).filter {
-                    it.versionIdentifier > currentPrefVersion
-                }.toList()
+                return getAllInstances(legacyPreviousVersionCode)
+                    .filter {
+                        it.versionIdentifier > currentPrefVersion
+                    }.toList()
             }
 
             /** Sets the preference version such that no upgrades need to be applied */
@@ -105,12 +146,14 @@ object PreferenceUpgradeService {
                 setPreferenceVersion(preferences, versionWhichRequiresNoUpgrades)
             }
 
-            internal fun getPreferenceVersion(preferences: SharedPreferences) =
-                preferences.getInt(upgradeVersionPrefKey, 0)
+            internal fun getPreferenceVersion(preferences: SharedPreferences) = preferences.getInt(UPGRADE_VERSION_PREF_KEY, 0)
 
-            internal fun setPreferenceVersion(preferences: SharedPreferences, versionIdentifier: VersionIdentifier) {
+            internal fun setPreferenceVersion(
+                preferences: SharedPreferences,
+                versionIdentifier: VersionIdentifier,
+            ) {
                 Timber.i("upgrading preference version to '$versionIdentifier'")
-                preferences.edit { putInt(upgradeVersionPrefKey, versionIdentifier) }
+                preferences.edit { putInt(UPGRADE_VERSION_PREF_KEY, versionIdentifier) }
             }
 
             /** Returns the collection of all preference version numbers */
@@ -129,7 +172,9 @@ object PreferenceUpgradeService {
          * upgrades were detected via a version code comparison
          * rather than comparing a preference value
          */
-        private class LegacyPreferenceUpgrade(val previousVersionCode: LegacyVersionIdentifier) : PreferenceUpgrade(1) {
+        private class LegacyPreferenceUpgrade(
+            val previousVersionCode: LegacyVersionIdentifier,
+        ) : PreferenceUpgrade(1) {
             override fun upgrade(preferences: SharedPreferences) {
                 if (!needsLegacyPreferenceUpgrade(previousVersionCode)) {
                     return
@@ -188,19 +233,6 @@ object PreferenceUpgradeService {
         protected abstract fun upgrade(preferences: SharedPreferences)
 
         /**
-         * msync is a legacy URL which does not use the hostnum for load balancing
-         * It was the default value in the "custom sync server" preference
-         */
-        internal class RemoveLegacyMediaSyncUrl : PreferenceUpgrade(3) {
-            override fun upgrade(preferences: SharedPreferences) {
-                val mediaSyncUrl = preferences.getString(CustomSyncServer.PREFERENCE_CUSTOM_MEDIA_SYNC_URL, null)
-                if (mediaSyncUrl?.startsWith("https://msync.ankiweb.net") == true) {
-                    preferences.edit { remove(CustomSyncServer.PREFERENCE_CUSTOM_MEDIA_SYNC_URL) }
-                }
-            }
-        }
-
-        /**
          * update toolbar buttons with new preferences, when button text empty or null then it adds the index as button text
          */
         internal class UpdateNoteEditorToolbarPrefs : PreferenceUpgrade(4) {
@@ -216,23 +248,29 @@ object PreferenceUpgradeService {
 
             private fun getNewToolbarButtons(preferences: SharedPreferences): ArrayList<CustomToolbarButton> {
                 // get old toolbar prefs
-                val set = preferences.getStringSet("note_editor_custom_buttons", HashSetInit<String>(0)) as Set<String?>
+                val set = preferences.getStringSet("note_editor_custom_buttons", hashSetInit<String>(0)) as Set<String?>
                 // new list with buttons size
                 val buttons = ArrayList<CustomToolbarButton>(set.size)
 
                 // parse fields with separator
                 for (s in set) {
-                    val fields = s!!.split(Consts.FIELD_SEPARATOR.toRegex(), CustomToolbarButton.KEEP_EMPTY_ENTRIES.coerceAtLeast(0)).toTypedArray()
+                    val fields =
+                        s!!
+                            .split(
+                                Consts.FIELD_SEPARATOR.toRegex(),
+                                CustomToolbarButton.KEEP_EMPTY_ENTRIES.coerceAtLeast(0),
+                            ).toTypedArray()
                     if (fields.size != 3) {
                         continue
                     }
 
-                    val index: Int = try {
-                        fields[0].toInt()
-                    } catch (e: Exception) {
-                        Timber.w(e)
-                        continue
-                    }
+                    val index: Int =
+                        try {
+                            fields[0].toInt()
+                        } catch (e: Exception) {
+                            Timber.w(e)
+                            continue
+                        }
 
                     // add new button with the index + 1 as button text
                     val visualIndex: Int = index + 1
@@ -246,44 +284,46 @@ object PreferenceUpgradeService {
         }
 
         internal class UpgradeGesturesToControls : PreferenceUpgrade(5) {
-            val oldCommandValues = mapOf(
-                Pair(1, ViewerCommand.SHOW_ANSWER),
-                Pair(2, ViewerCommand.FLIP_OR_ANSWER_EASE1),
-                Pair(3, ViewerCommand.FLIP_OR_ANSWER_EASE2),
-                Pair(4, ViewerCommand.FLIP_OR_ANSWER_EASE3),
-                Pair(5, ViewerCommand.FLIP_OR_ANSWER_EASE4),
-                Pair(6, ViewerCommand.FLIP_OR_ANSWER_RECOMMENDED),
-                Pair(7, ViewerCommand.FLIP_OR_ANSWER_BETTER_THAN_RECOMMENDED),
-                Pair(8, ViewerCommand.UNDO),
-                Pair(9, ViewerCommand.EDIT),
-                Pair(10, ViewerCommand.MARK),
-                Pair(12, ViewerCommand.BURY_CARD),
-                Pair(13, ViewerCommand.SUSPEND_CARD),
-                Pair(14, ViewerCommand.DELETE),
-                Pair(16, ViewerCommand.PLAY_MEDIA),
-                Pair(17, ViewerCommand.EXIT),
-                Pair(18, ViewerCommand.BURY_NOTE),
-                Pair(19, ViewerCommand.SUSPEND_NOTE),
-                Pair(20, ViewerCommand.TOGGLE_FLAG_RED),
-                Pair(21, ViewerCommand.TOGGLE_FLAG_ORANGE),
-                Pair(22, ViewerCommand.TOGGLE_FLAG_GREEN),
-                Pair(23, ViewerCommand.TOGGLE_FLAG_BLUE),
-                Pair(38, ViewerCommand.TOGGLE_FLAG_PINK),
-                Pair(39, ViewerCommand.TOGGLE_FLAG_TURQUOISE),
-                Pair(40, ViewerCommand.TOGGLE_FLAG_PURPLE),
-                Pair(24, ViewerCommand.UNSET_FLAG),
-                Pair(30, ViewerCommand.PAGE_UP),
-                Pair(31, ViewerCommand.PAGE_DOWN),
-                Pair(32, ViewerCommand.TAG),
-                Pair(33, ViewerCommand.CARD_INFO),
-                Pair(34, ViewerCommand.ABORT_AND_SYNC),
-                Pair(35, ViewerCommand.RECORD_VOICE),
-                Pair(36, ViewerCommand.REPLAY_VOICE),
-                Pair(37, ViewerCommand.TOGGLE_WHITEBOARD),
-                Pair(41, ViewerCommand.SHOW_HINT),
-                Pair(42, ViewerCommand.SHOW_ALL_HINTS),
-                Pair(43, ViewerCommand.ADD_NOTE),
-            )
+            val oldCommandValues =
+                mapOf(
+                    Pair(1, ViewerCommand.SHOW_ANSWER),
+                    Pair(2, ViewerCommand.FLIP_OR_ANSWER_EASE1),
+                    Pair(3, ViewerCommand.FLIP_OR_ANSWER_EASE2),
+                    Pair(4, ViewerCommand.FLIP_OR_ANSWER_EASE3),
+                    Pair(5, ViewerCommand.FLIP_OR_ANSWER_EASE4),
+                    Pair(8, ViewerCommand.UNDO),
+                    Pair(9, ViewerCommand.EDIT),
+                    Pair(10, ViewerCommand.MARK),
+                    Pair(12, ViewerCommand.BURY_CARD),
+                    Pair(13, ViewerCommand.SUSPEND_CARD),
+                    Pair(14, ViewerCommand.DELETE),
+                    Pair(16, ViewerCommand.PLAY_MEDIA),
+                    Pair(17, ViewerCommand.EXIT),
+                    Pair(18, ViewerCommand.BURY_NOTE),
+                    Pair(19, ViewerCommand.SUSPEND_NOTE),
+                    Pair(20, ViewerCommand.TOGGLE_FLAG_RED),
+                    Pair(21, ViewerCommand.TOGGLE_FLAG_ORANGE),
+                    Pair(22, ViewerCommand.TOGGLE_FLAG_GREEN),
+                    Pair(23, ViewerCommand.TOGGLE_FLAG_BLUE),
+                    Pair(38, ViewerCommand.TOGGLE_FLAG_PINK),
+                    Pair(39, ViewerCommand.TOGGLE_FLAG_TURQUOISE),
+                    Pair(40, ViewerCommand.TOGGLE_FLAG_PURPLE),
+                    Pair(24, ViewerCommand.UNSET_FLAG),
+                    Pair(30, ViewerCommand.PAGE_UP),
+                    Pair(31, ViewerCommand.PAGE_DOWN),
+                    Pair(32, ViewerCommand.TAG),
+                    Pair(33, ViewerCommand.CARD_INFO),
+                    Pair(34, ViewerCommand.ABORT_AND_SYNC),
+                    Pair(35, ViewerCommand.RECORD_VOICE),
+                    Pair(36, ViewerCommand.REPLAY_VOICE),
+                    Pair(46, ViewerCommand.SAVE_VOICE),
+                    Pair(37, ViewerCommand.TOGGLE_WHITEBOARD),
+                    Pair(44, ViewerCommand.CLEAR_WHITEBOARD),
+                    Pair(45, ViewerCommand.CHANGE_WHITEBOARD_PEN_COLOR),
+                    Pair(41, ViewerCommand.SHOW_HINT),
+                    Pair(42, ViewerCommand.SHOW_ALL_HINTS),
+                    Pair(43, ViewerCommand.ADD_NOTE),
+                )
 
             override fun upgrade(preferences: SharedPreferences) {
                 upgradeGestureToBinding(preferences, "gestureSwipeUp", Gesture.SWIPE_UP)
@@ -305,16 +345,28 @@ object PreferenceUpgradeService {
                 upgradeVolumeGestureToBinding(preferences, "gestureVolumeDown", KeyEvent.KEYCODE_VOLUME_DOWN)
             }
 
-            private fun upgradeVolumeGestureToBinding(preferences: SharedPreferences, oldGesturePreferenceKey: String, volumeKeyCode: Int) {
+            private fun upgradeVolumeGestureToBinding(
+                preferences: SharedPreferences,
+                oldGesturePreferenceKey: String,
+                volumeKeyCode: Int,
+            ) {
                 upgradeBinding(preferences, oldGesturePreferenceKey, keyCode(volumeKeyCode))
             }
 
-            private fun upgradeGestureToBinding(preferences: SharedPreferences, oldGesturePreferenceKey: String, gesture: Gesture) {
+            private fun upgradeGestureToBinding(
+                preferences: SharedPreferences,
+                oldGesturePreferenceKey: String,
+                gesture: Gesture,
+            ) {
                 upgradeBinding(preferences, oldGesturePreferenceKey, Binding.gesture(gesture))
             }
 
             @VisibleForTesting
-            internal fun upgradeBinding(preferences: SharedPreferences, oldGesturePreferenceKey: String, binding: Binding) {
+            internal fun upgradeBinding(
+                preferences: SharedPreferences,
+                oldGesturePreferenceKey: String,
+                binding: Binding,
+            ) {
                 Timber.d("Replacing gesture '%s' with binding", oldGesturePreferenceKey)
 
                 // This exists as a user may have mapped "volume down" to "UNDO".
@@ -333,7 +385,11 @@ object PreferenceUpgradeService {
                 }
             }
 
-            private fun replaceBinding(preferences: SharedPreferences, oldGesturePreferenceKey: String, binding: Binding) {
+            private fun replaceBinding(
+                preferences: SharedPreferences,
+                oldGesturePreferenceKey: String,
+                binding: Binding,
+            ) {
                 // the preference should be set, but if it's null, then we have nothing to do
                 val pref = preferences.getString(oldGesturePreferenceKey, "0") ?: return
                 // If the preference doesn't map (for example: it was removed), then nothing to do
@@ -343,10 +399,11 @@ object PreferenceUpgradeService {
                 Timber.i("Moving preference from '%s' to '%s'", oldGesturePreferenceKey, command.preferenceKey)
 
                 // add to the binding_COMMANDNAME preference
-                val mappableBinding = MappableBinding(binding, MappableBinding.Screen.Reviewer(CardSide.BOTH))
+                val mappableBinding = MappableBinding(binding, command.screenBuilder(CardSide.BOTH))
                 command.addBindingAtEnd(preferences, mappableBinding)
             }
         }
+
         internal class UpgradeDayAndNightThemes : PreferenceUpgrade(6) {
             override fun upgrade(preferences: SharedPreferences) {
                 val dayTheme = preferences.getString("dayTheme", "0")
@@ -365,55 +422,227 @@ object PreferenceUpgradeService {
                     }
                     remove("invertedColors")
                 }
-                if (AnkiDroidApp.isInitialized) {
-                    Themes.updateCurrentTheme()
+            }
+        }
+
+        internal class UpgradeFetchMedia : PreferenceUpgrade(9) {
+            override fun upgrade(preferences: SharedPreferences) {
+                val fetchMediaSwitch = preferences.getBoolean(RemovedPreferences.SYNC_FETCHES_MEDIA, true)
+                val status = if (fetchMediaSwitch) "always" else "never"
+                preferences.edit {
+                    remove(RemovedPreferences.SYNC_FETCHES_MEDIA)
+                    putString("syncFetchMedia", status)
                 }
             }
         }
 
-        internal class UpgradeCustomCollectionSyncUrl : PreferenceUpgrade(7) {
+        internal class UpgradeAppLocale : PreferenceUpgrade(10) {
             override fun upgrade(preferences: SharedPreferences) {
-                val oldUrl = preferences.getString(RemovedPreferences.PREFERENCE_CUSTOM_SYNC_BASE, null)
-                var newUrl: String? = null
+                fun getLocale(localeCode: String): Locale {
+                    // Language separators are '_' or '-' at different times in display/resource fetch
+                    val locale: Locale =
+                        if (localeCode.contains("_") || localeCode.contains("-")) {
+                            try {
+                                val localeParts = localeCode.split("[_-]".toRegex(), 2).toTypedArray()
+                                Locale(localeParts[0], localeParts[1])
+                            } catch (e: ArrayIndexOutOfBoundsException) {
+                                Timber.w(e, "getLocale variant split fail, using code '%s' raw.", localeCode)
+                                Locale(localeCode)
+                            }
+                        } else {
+                            Locale(localeCode) // guaranteed to be non null
+                        }
+                    return locale
+                }
+                // 1. upgrade value from `locale.toString()` to `locale.toLanguageTag()`,
+                // because the new API uses language tags
+                val languagePrefValue = preferences.getString("language", "")!!
+                val languageTag =
+                    if (languagePrefValue.isNotEmpty()) {
+                        getLocale(languagePrefValue).toLanguageTag()
+                    } else {
+                        null
+                    }
+                preferences.edit {
+                    putString("language", languageTag ?: "")
+                }
+                // 2. Set the locale with the new AndroidX API
+                val localeList = LocaleListCompat.forLanguageTags(languageTag)
+                AppCompatDelegate.setApplicationLocales(localeList)
+            }
+        }
 
-                if (oldUrl != null && oldUrl.isNotBlank()) {
-                    try {
-                        newUrl = oldUrl.toUri().buildUpon().appendPath("sync").toString() + "/"
-                    } catch (e: Exception) {
-                        Timber.e(e, "Error constructing new sync URL from '%s'", oldUrl)
+        internal class RemoveScrollingButtons : PreferenceUpgrade(11) {
+            override fun upgrade(preferences: SharedPreferences) {
+                preferences.edit { remove("scrolling_buttons") }
+            }
+        }
+
+        internal class RemoveAnswerRecommended : PreferenceUpgrade(12) {
+            override fun upgrade(preferences: SharedPreferences) {
+                moveControlBindings(preferences, "binding_FLIP_OR_ANSWER_RECOMMENDED", ViewerCommand.FLIP_OR_ANSWER_EASE3.preferenceKey)
+                moveControlBindings(
+                    preferences,
+                    "binding_FLIP_OR_ANSWER_BETTER_THAN_RECOMMENDED",
+                    ViewerCommand.FLIP_OR_ANSWER_EASE4.preferenceKey,
+                )
+            }
+
+            private fun moveControlBindings(
+                preferences: SharedPreferences,
+                sourcePrefKey: String,
+                destinyPrefKey: String,
+            ) {
+                val sourcePrefValue = preferences.getString(sourcePrefKey, null) ?: return
+                val destinyPrefValue = preferences.getString(destinyPrefKey, null)
+
+                val joinedBindings =
+                    MappableBinding.fromPreferenceString(destinyPrefValue) +
+                        MappableBinding.fromPreferenceString(sourcePrefValue)
+                preferences.edit {
+                    putString(destinyPrefKey, joinedBindings.toPreferenceString())
+                    remove(sourcePrefKey)
+                }
+            }
+        }
+
+        /**
+         * Switch from using a single backup option to using separate preferences for
+         * daily/weekly/monthly as well as frequency of backups.
+         */
+        internal class RemoveBackupMax : PreferenceUpgrade(13) {
+            override fun upgrade(preferences: SharedPreferences) {
+                val legacyValue = preferences.getInt("backupMax", 4)
+                preferences.edit {
+                    remove("backupMax")
+                    putInt("minutes_between_automatic_backups", 30) // 30 minutes default
+                    putInt("daily_backups_to_keep", legacyValue)
+                    putInt("weekly_backups_to_keep", legacyValue)
+                    putInt("monthly_backups_to_keep", legacyValue)
+                }
+            }
+        }
+
+        /** We should have used [anki.config.ConfigKey.Bool.BROWSER_TABLE_SHOW_NOTES_MODE] */
+        internal class RemoveInCardsMode : PreferenceUpgrade(14) {
+            override fun upgrade(preferences: SharedPreferences) {
+                preferences.edit {
+                    remove("inCardsMode")
+                }
+            }
+        }
+
+        internal class RemoveReviewerETA : PreferenceUpgrade(15) {
+            override fun upgrade(preferences: SharedPreferences) {
+                // reverted: #15405
+                // preferences.edit { remove("showETA") }
+            }
+        }
+
+        /** default to true for existing users  */
+        internal class SetShowDeckTitle : PreferenceUpgrade(16) {
+            override fun upgrade(preferences: SharedPreferences) {
+                if (!preferences.contains("showDeckTitle")) {
+                    preferences.edit { putBoolean("showDeckTitle", true) }
+                }
+            }
+        }
+
+        /**
+         * Issue 14386: Opening preferences opted users in to analytics in 2.16 due to an oversight
+         *
+         * Despite the fact that analytics were broken at the time due to Google's migration from
+         * Universal Analytics to Google Analytics 4, we want analytics to STRICTLY be opt-in
+         *
+         * As we likely have inadvertent opt-ins, we stated that we would opt everyone out:
+         * https://ankidroid.org/docs/changelog.html#_version_2_16_5_20230906
+         *
+         * We now use "analytics_opt_in"
+         *
+         * @see [UsageAnalytics.ANALYTICS_OPTIN_KEY]
+         */
+        internal class ResetAnalyticsOptIn : PreferenceUpgrade(17) {
+            override fun upgrade(preferences: SharedPreferences) = preferences.edit { remove("analyticsOptIn") }
+        }
+
+        internal class RemoveNoCodeFormatting : PreferenceUpgrade(18) {
+            override fun upgrade(preferences: SharedPreferences) = preferences.edit { remove("noCodeFormatting") }
+        }
+
+        internal class UpgradeBrowserColumns : PreferenceUpgrade(19) {
+            override fun upgrade(preferences: SharedPreferences) {
+                // Columns were stored as an index into COLUMN[1/2]_KEYS
+                // This produced a CardBrowserColumn object, and the index was used as an index
+                // into a string array
+
+                // This has a number of issues:
+                // * Cards Mode and Notes Mode uses the same column definitions
+                // * The index was opaque: 0 meant different things in column 1 and column 2
+                // * COLUMN[N]_KEYS differed from the available columns in Anki Desktop
+                // * A user could only select two columns, even on a Tablet/Chromebook/TV
+
+                // To improve this, we define: CardBrowserColumnCollection
+                // This uses 1 preference for cards or notes mode, rather than 1 preference per
+                // column
+
+                // The values are now equivalent to the keys which are sent to Anki Desktop
+                // and allow an arbitrary ordering and number of values
+                // "activeNoteCols" -> "question|cardEase"
+
+                fun clearLegacyKeys() {
+                    Timber.d("removing legacy keys")
+                    preferences.edit {
+                        remove(DISPLAY_COLUMN_1_KEY)
+                        remove(DISPLAY_COLUMN_2_KEY)
                     }
                 }
 
-                preferences.edit {
-                    remove(RemovedPreferences.PREFERENCE_CUSTOM_SYNC_BASE)
-                    if (newUrl != null) putString(CustomSyncServer.PREFERENCE_CUSTOM_COLLECTION_SYNC_URL, newUrl)
+                val currentColumn1Index = preferences.getInt(DISPLAY_COLUMN_1_KEY, -1)
+                val currentColumn2Index = preferences.getInt(DISPLAY_COLUMN_2_KEY, -1)
+
+                if (currentColumn1Index == -1 || currentColumn2Index == -1) {
+                    Timber.d("no update needed")
+                    clearLegacyKeys()
+                    return
                 }
+
+                val currentColumn1 = LEGACY_COLUMN1_KEYS[currentColumn1Index]
+                val currentColumn2 = LEGACY_COLUMN2_KEYS[currentColumn2Index]
+
+                BrowserColumnCollection.update(preferences, CardsOrNotes.CARDS) { columns ->
+                    if (columns.size < 2) return@update false
+                    Timber.d("upgrading browser 'cards' columns")
+                    columns[0] = currentColumn1
+                    columns[1] = currentColumn2
+                    true
+                }
+
+                BrowserColumnCollection.update(preferences, CardsOrNotes.NOTES) { columns ->
+                    if (columns.size < 2) return@update false
+                    Timber.d("upgrading browser 'notes' columns")
+                    columns[0] = currentColumn1
+                    columns[1] = currentColumn2
+                    true
+                }
+
+                clearLegacyKeys()
             }
-        }
 
-        internal class UpgradeCustomSyncServerEnabled : PreferenceUpgrade(8) {
-            override fun upgrade(preferences: SharedPreferences) {
-                val customSyncServerEnabled = preferences.getBoolean(RemovedPreferences.PREFERENCE_ENABLE_CUSTOM_SYNC_SERVER, false)
-                val customCollectionSyncUrl = preferences.getString(CustomSyncServer.PREFERENCE_CUSTOM_COLLECTION_SYNC_URL, null)
-                val customMediaSyncUrl = preferences.getString(CustomSyncServer.PREFERENCE_CUSTOM_MEDIA_SYNC_URL, null)
+            companion object {
+                private const val DISPLAY_COLUMN_1_KEY = "cardBrowserColumn1"
+                private const val DISPLAY_COLUMN_2_KEY = "cardBrowserColumn2"
 
-                preferences.edit {
-                    remove(RemovedPreferences.PREFERENCE_ENABLE_CUSTOM_SYNC_SERVER)
-                    putBoolean(
-                        CustomSyncServer.PREFERENCE_CUSTOM_COLLECTION_SYNC_SERVER_ENABLED,
-                        customSyncServerEnabled && !customCollectionSyncUrl.isNullOrEmpty()
-                    )
-                    putBoolean(
-                        CustomSyncServer.PREFERENCE_CUSTOM_MEDIA_SYNC_SERVER_ENABLED,
-                        customSyncServerEnabled && !customMediaSyncUrl.isNullOrEmpty()
-                    )
-                }
+                @VisibleForTesting
+                internal val LEGACY_COLUMN1_KEYS = arrayOf(QUESTION, SFLD)
+
+                @VisibleForTesting
+                internal val LEGACY_COLUMN2_KEYS =
+                    arrayOf(ANSWER, CARD, DECK, NOTE_TYPE, QUESTION, TAGS, LAPSES, REVIEWS, INTERVAL, EASE, DUE, CHANGED, CREATED, EDITED)
             }
         }
     }
 }
 
 object RemovedPreferences {
-    const val PREFERENCE_CUSTOM_SYNC_BASE = "syncBaseUrl"
-    const val PREFERENCE_ENABLE_CUSTOM_SYNC_SERVER = "useCustomSyncServer"
+    const val SYNC_FETCHES_MEDIA = "syncFetchesMedia"
 }

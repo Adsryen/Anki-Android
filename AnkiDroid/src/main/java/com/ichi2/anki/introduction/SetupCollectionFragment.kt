@@ -34,16 +34,18 @@
 package com.ichi2.anki.introduction
 
 import android.os.Bundle
-import android.view.LayoutInflater
+import android.os.Parcelable
 import android.view.View
-import android.view.ViewGroup
 import android.widget.Button
+import androidx.core.os.BundleCompat
 import androidx.core.os.bundleOf
 import androidx.fragment.app.Fragment
 import androidx.fragment.app.FragmentActivity
 import androidx.fragment.app.setFragmentResult
 import com.ichi2.anki.R
-import com.ichi2.anki.introduction.SetupCollectionFragment.CollectionSetupOption.*
+import com.ichi2.anki.introduction.SetupCollectionFragment.CollectionSetupOption.DeckPickerWithNewCollection
+import com.ichi2.anki.introduction.SetupCollectionFragment.CollectionSetupOption.SyncFromExistingAccount
+import kotlinx.parcelize.Parcelize
 
 /**
  * Allows a user multiple choices for setting up the collection:
@@ -57,13 +59,11 @@ import com.ichi2.anki.introduction.SetupCollectionFragment.CollectionSetupOption
  * for example: selecting a 'safe' folder using scoped storage, which would not have been deleted
  * if the app is uninstalled.
  */
-class SetupCollectionFragment : Fragment() {
-
-    override fun onCreateView(inflater: LayoutInflater, container: ViewGroup?, savedInstanceState: Bundle?): View? {
-        return inflater.inflate(R.layout.introduction_layout, container, false)
-    }
-
-    override fun onViewCreated(view: View, savedInstanceState: Bundle?) {
+class SetupCollectionFragment : Fragment(R.layout.introduction_layout) {
+    override fun onViewCreated(
+        view: View,
+        savedInstanceState: Bundle?,
+    ) {
         super.onViewCreated(view, savedInstanceState)
 
         view.findViewById<Button>(R.id.get_started).apply {
@@ -78,11 +78,13 @@ class SetupCollectionFragment : Fragment() {
         setFragmentResult(FRAGMENT_KEY, bundleOf(RESULT_KEY to option))
     }
 
-    enum class CollectionSetupOption {
+    @Parcelize
+    enum class CollectionSetupOption : Parcelable {
         /** Continues to the DeckPicker with a new collection */
         DeckPickerWithNewCollection,
+
         /** Syncs an existing profile from AnkiWeb */
-        SyncFromExistingAccount
+        SyncFromExistingAccount,
     }
 
     companion object {
@@ -90,10 +92,9 @@ class SetupCollectionFragment : Fragment() {
         const val RESULT_KEY = "result"
 
         /** Handles a result from a [SetupCollectionFragment] */
-        @Suppress("deprecation") // get
         fun FragmentActivity.handleCollectionSetupOption(handleResult: (CollectionSetupOption) -> Unit) {
             supportFragmentManager.setFragmentResultListener(FRAGMENT_KEY, this) { _, b ->
-                val item = b[RESULT_KEY] as CollectionSetupOption
+                val item = BundleCompat.getParcelable(b, RESULT_KEY, CollectionSetupOption::class.java)!!
                 handleResult(item)
             }
         }

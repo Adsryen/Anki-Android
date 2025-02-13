@@ -17,73 +17,91 @@
  ****************************************************************************************/
 package com.ichi2.anki
 
-import android.annotation.SuppressLint
+import android.app.Activity
 import android.app.Application
 import android.content.Context
 import android.content.Intent
 import android.content.SharedPreferences
-import android.content.res.Configuration
 import android.content.res.Resources
 import android.net.Uri
 import android.os.Build
+import android.os.Bundle
 import android.os.Environment
-import android.os.LocaleList
 import android.system.Os
-import android.util.Log
 import android.webkit.CookieManager
 import androidx.annotation.VisibleForTesting
 import androidx.core.content.edit
+import androidx.fragment.app.FragmentActivity
 import androidx.lifecycle.MutableLiveData
+import androidx.work.Configuration
+import anki.collection.OpChanges
 import com.ichi2.anki.CrashReportService.sendExceptionReport
-import com.ichi2.anki.UIUtils.showThemedToast
 import com.ichi2.anki.analytics.UsageAnalytics
+import com.ichi2.anki.browser.SharedPreferencesLastDeckIdRepository
+import com.ichi2.anki.common.utils.isRunningAsUnitTest
 import com.ichi2.anki.contextmenu.AnkiCardContextMenu
 import com.ichi2.anki.contextmenu.CardBrowserContextMenu
 import com.ichi2.anki.exception.StorageAccessException
+import com.ichi2.anki.logging.FragmentLifecycleLogger
+import com.ichi2.anki.logging.LogType
+import com.ichi2.anki.logging.ProductionCrashReportingTree
+import com.ichi2.anki.logging.RobolectricDebugTree
+import com.ichi2.anki.preferences.SharedPreferencesProvider
+import com.ichi2.anki.preferences.sharedPrefs
+import com.ichi2.anki.servicelayer.DebugInfoService
+import com.ichi2.anki.servicelayer.ThrowableFilterService
 import com.ichi2.anki.services.BootService
 import com.ichi2.anki.services.NotificationService
+import com.ichi2.anki.ui.dialogs.ActivityAgnosticDialogs
+import com.ichi2.annotations.NeedsTest
 import com.ichi2.compat.CompatHelper
-import com.ichi2.themes.Themes
-import com.ichi2.utils.*
-import com.ichi2.utils.LanguageUtil.getCurrentLanguage
-import com.ichi2.utils.LanguageUtil.getLanguage
-import net.ankiweb.rsdroid.BackendFactory
+import com.ichi2.libanki.ChangeManager
+import com.ichi2.utils.AdaptionUtil
+import com.ichi2.utils.ExceptionUtil
+import com.ichi2.utils.KotlinCleanup
+import com.ichi2.utils.LanguageUtil
+import com.ichi2.utils.Permissions
+import com.ichi2.widget.cardanalysis.CardAnalysisWidget
+import com.ichi2.widget.deckpicker.DeckPickerWidget
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.launch
 import timber.log.Timber
 import timber.log.Timber.DebugTree
-import java.io.InputStream
-import java.util.*
-import java.util.regex.Pattern
+import java.util.Locale
 
 /**
  * Application class.
  */
-@KotlinCleanup("lots to do")
 @KotlinCleanup("IDE Lint")
-open class AnkiDroidApp : Application() {
+open class AnkiDroidApp :
+    Application(),
+    Configuration.Provider,
+    ChangeManager.Subscriber {
     /** An exception if the WebView subsystem fails to load  */
-    private var mWebViewError: Throwable? = null
-    private val mNotifications = MutableLiveData<Void?>()
-    @KotlinCleanup("can move analytics here now")
-    override fun attachBaseContext(base: Context) {
-        // update base context with preferred app language before attach
-        // possible since API 17, only supported way since API 25
-        // for API < 17 we update the configuration directly
-        super.attachBaseContext(updateContextWithLanguage(base))
+    private var webViewError: Throwable? = null
+    private val notifications = MutableLiveData<Void?>()
 
-        // DO NOT INIT A WEBVIEW HERE (Moving Analytics to this method)
-        // Crashes only on a Physical API 19 Device - #7135
-        // After we move past API 19, we're good to go.
-    }
+    lateinit var activityAgnosticDialogs: ActivityAgnosticDialogs
+    val sharedPrefsLastDeckIdRepository = SharedPreferencesLastDeckIdRepository()
 
+    /** Used to avoid showing extra progress dialogs when one already shown. */
+    var progressDialogShown = false
+
+    override val workManagerConfiguration: Configuration
+        get() = Configuration.Builder().build()
+
+    @KotlinCleanup("analytics can be moved to attachBaseContext()")
     /**
      * On application creation.
      */
     override fun onCreate() {
-        BackendFactory.defaultLegacySchema = BuildConfig.LEGACY_SCHEMA
         try {
+            Os.setenv("PLATFORM", syncPlatform(), false)
             // enable debug logging of sync actions
             if (BuildConfig.DEBUG) {
-                Os.setenv("RUST_LOG", "info,anki::sync=debug,anki::media=debug", false)
+                Os.setenv("RUST_LOG", "info,anki::sync=debug,anki::media=debug,fsrs=error", false)
             }
         } catch (_: Exception) {
         }
@@ -104,33 +122,38 @@ open class AnkiDroidApp : Application() {
         instance = this
 
         // Get preferences
-        val preferences = getSharedPrefs(this)
+        val preferences = this.sharedPrefs()
 
-        // TODO remove the following if-block once AnkiDroid uses the new schema by default
-        if (BuildConfig.LEGACY_SCHEMA) {
-            val isNewSchemaEnabledByPref =
-                preferences.getBoolean(getString(R.string.pref_rust_backend_key), false)
-            if (isNewSchemaEnabledByPref) {
-                Timber.i("New schema enabled by preference")
-                BackendFactory.defaultLegacySchema = false
-            }
-        }
+        // Ensures any change is propagated to widgets
+        ChangeManager.subscribe(this)
+
         CrashReportService.initialize(this)
-        if (BuildConfig.DEBUG) {
-            // Enable verbose error logging and do method tracing to put the Class name as log tag
-            Timber.plant(DebugTree())
+        val logType = LogType.value
+        when (logType) {
+            LogType.DEBUG -> Timber.plant(DebugTree())
+            LogType.ROBOLECTRIC -> Timber.plant(RobolectricDebugTree())
+            LogType.PRODUCTION -> Timber.plant(ProductionCrashReportingTree())
+        }
+        if (BuildConfig.ENABLE_LEAK_CANARY) {
             LeakCanaryConfiguration.setInitialConfigFor(this)
         } else {
-            Timber.plant(ProductionCrashReportingTree())
             LeakCanaryConfiguration.disable()
         }
         Timber.tag(TAG)
         Timber.d("Startup - Application Start")
+        Timber.i("Timber config: $logType")
 
         // analytics after ACRA, they both install UncaughtExceptionHandlers but Analytics chains while ACRA does not
         UsageAnalytics.initialize(this)
         if (BuildConfig.DEBUG) {
             UsageAnalytics.setDryRun(true)
+        }
+
+        // Last in the UncaughtExceptionHandlers chain is our filter service
+        ThrowableFilterService.initialize()
+
+        applicationScope.launch {
+            Timber.i(DebugInfoService.getDebugInfo(this@AnkiDroidApp))
         }
 
         // Stop after analytics and logging are initialised.
@@ -143,21 +166,23 @@ open class AnkiDroidApp : Application() {
         }
 
         // make default HTML / JS debugging true for debug build and disable for unit/android tests
-        if (BuildConfig.DEBUG && !AdaptionUtil.isRunningAsUnitTest) {
+        if (BuildConfig.DEBUG && !isRunningAsUnitTest) {
             preferences.edit { putBoolean("html_javascript_debugging", true) }
         }
         CardBrowserContextMenu.ensureConsistentStateWithPreferenceStatus(
             this,
             preferences.getBoolean(
                 getString(R.string.card_browser_external_context_menu_key),
-                false
-            )
+                false,
+            ),
         )
         AnkiCardContextMenu.ensureConsistentStateWithPreferenceStatus(
             this,
-            preferences.getBoolean(getString(R.string.anki_card_external_context_menu_key), true)
+            preferences.getBoolean(getString(R.string.anki_card_external_context_menu_key), true),
         )
         CompatHelper.compat.setupNotificationChannel(applicationContext)
+
+        makeBackendUsable(this)
 
         // Configure WebView to allow file scheme pages to access cookies.
         if (!acceptFileSchemeCookies()) {
@@ -169,7 +194,7 @@ open class AnkiDroidApp : Application() {
         LanguageUtil.setDefaultBackendLanguages()
 
         // Create the AnkiDroid directory if missing. Send exception report if inaccessible.
-        if (Permissions.hasStorageAccessPermission(this)) {
+        if (Permissions.hasLegacyStorageAccessPermission(this)) {
             try {
                 val dir = CollectionHelper.getCurrentAnkiDroidDirectory(this)
                 CollectionHelper.initializeAnkiDroidDirectory(dir)
@@ -186,119 +211,145 @@ open class AnkiDroidApp : Application() {
         BootService().onReceive(this, Intent(this, BootService::class.java))
 
         // Register for notifications
-        mNotifications.observeForever { NotificationService.triggerNotificationFor(this) }
-        Themes.systemIsInNightMode =
-            resources.configuration.uiMode and Configuration.UI_MODE_NIGHT_MASK == Configuration.UI_MODE_NIGHT_YES
-        Themes.updateCurrentTheme()
+        notifications.observeForever { NotificationService.triggerNotificationFor(this) }
+
+        // listen for day rollover: time + timezone changes
+        DayRolloverHandler.listenForRolloverEvents(this)
+
+        registerActivityLifecycleCallbacks(
+            object : ActivityLifecycleCallbacks {
+                override fun onActivityCreated(
+                    activity: Activity,
+                    savedInstanceState: Bundle?,
+                ) {
+                    Timber.i("${activity::class.simpleName}::onCreate")
+                    (activity as? FragmentActivity)
+                        ?.supportFragmentManager
+                        ?.registerFragmentLifecycleCallbacks(
+                            FragmentLifecycleLogger(activity),
+                            true,
+                        )
+                }
+
+                override fun onActivityStarted(activity: Activity) {
+                    Timber.i("${activity::class.simpleName}::onStart")
+                }
+
+                override fun onActivityResumed(activity: Activity) {
+                    Timber.i("${activity::class.simpleName}::onResume")
+                }
+
+                override fun onActivityPaused(activity: Activity) {
+                    Timber.i("${activity::class.simpleName}::onPause")
+                }
+
+                override fun onActivityStopped(activity: Activity) {
+                    Timber.i("${activity::class.simpleName}::onStop")
+                }
+
+                override fun onActivitySaveInstanceState(
+                    activity: Activity,
+                    outState: Bundle,
+                ) {
+                    Timber.i("${activity::class.simpleName}::onSaveInstanceState")
+                }
+
+                override fun onActivityDestroyed(activity: Activity) {
+                    Timber.i("${activity::class.simpleName}::onDestroy")
+                }
+            },
+        )
+
+        activityAgnosticDialogs = ActivityAgnosticDialogs.register(this)
+        TtsVoices.launchBuildLocalesJob()
+        // enable {{tts-voices:}} field filter
+        TtsVoicesFieldFilter.ensureApplied()
+    }
+
+    /**
+     * @return the app version, OS version and device model, provided when syncing.
+     */
+    private fun syncPlatform(): String {
+        // AnkiWeb reads this string and uses , and : as delimiters, so we remove them.
+        val model = Build.MODEL.replace(',', ' ').replace(':', ' ')
+        return String.format(
+            Locale.US,
+            "android:%s:%s:%s",
+            BuildConfig.VERSION_NAME,
+            Build.VERSION.RELEASE,
+            model,
+        )
     }
 
     fun scheduleNotification() {
-        mNotifications.postValue(null)
+        notifications.postValue(null)
     }
 
     @Suppress("deprecation") // 7109: setAcceptFileSchemeCookies
-    protected fun acceptFileSchemeCookies(): Boolean {
-        return try {
+    protected fun acceptFileSchemeCookies(): Boolean =
+        try {
             CookieManager.setAcceptFileSchemeCookies(true)
             true
         } catch (e: Throwable) {
             // 5794: Errors occur if the WebView fails to load
             // android.webkit.WebViewFactory.MissingWebViewPackageException.MissingWebViewPackageException
             // Error may be excessive, but I expect a UnsatisfiedLinkError to be possible here.
-            mWebViewError = e
+            webViewError = e
             sendExceptionReport(e, "setAcceptFileSchemeCookies")
             Timber.e(e, "setAcceptFileSchemeCookies")
             false
         }
-    }
 
     /**
-     * A tree which logs necessary data for crash reporting.
+     * Callback method invoked when operations that affect the app state are executed.
+     * If relevant changes related to the study queues are detected, the Deck Picker Widgets
+     * are updated accordingly.
      *
-     * Requirements:
-     * 1) ignore verbose and debug log levels
-     * 2) use the fixed AnkiDroidApp.TAG log tag (ACRA filters logcat for it when reporting errors)
-     * 3) dynamically discover the class name and prepend it to the message for warn and error
+     * @param changes The set of changes that occurred.
+     * @param handler An optional handler that can be used for custom processing (unused here).
      */
-    @SuppressLint("LogNotTimber")
-    class ProductionCrashReportingTree : Timber.Tree() {
-        /**
-         * Extract the tag which should be used for the message from the `element`. By default
-         * this will use the class name without any anonymous class suffixes (e.g., `Foo$1`
-         * becomes `Foo`).
-         *
-         *
-         * Note: This will not be called if an API with a manual tag was called with a non-null tag
-         */
-        fun createStackElementTag(element: StackTraceElement): String {
-            val m = ANONYMOUS_CLASS.matcher(element.className)
-            val tag = if (m.find()) m.replaceAll("") else element.className
-            return tag.substring(tag.lastIndexOf('.') + 1)
-        } // --- this is not present in the Timber.DebugTree copy/paste ---
-
-        // We are in production and should not crash the app for a logging failure
-        // throw new IllegalStateException(
-        //        "Synthetic stacktrace didn't have enough elements: are you using proguard?");
-        // --- end of alteration from upstream Timber.DebugTree.getTag ---
-        // DO NOT switch this to Thread.getCurrentThread().getStackTrace(). The test will pass
-        // because Robolectric runs them on the JVM but on Android the elements are different.
-        val tag: String
-            get() {
-                // DO NOT switch this to Thread.getCurrentThread().getStackTrace(). The test will pass
-                // because Robolectric runs them on the JVM but on Android the elements are different.
-                val stackTrace = Throwable().stackTrace
-                return if (stackTrace.size <= CALL_STACK_INDEX) {
-
-                    // --- this is not present in the Timber.DebugTree copy/paste ---
-                    // We are in production and should not crash the app for a logging failure
-                    "$TAG unknown class"
-                    // throw new IllegalStateException(
-                    //        "Synthetic stacktrace didn't have enough elements: are you using proguard?");
-                    // --- end of alteration from upstream Timber.DebugTree.getTag ---
-                } else createStackElementTag(stackTrace[CALL_STACK_INDEX])
-            }
-
-        // ----  END copied from Timber.DebugTree because DebugTree.getTag() is package private ----
-        override fun log(priority: Int, tag: String?, message: String, t: Throwable?) {
-            when (priority) {
-                Log.VERBOSE, Log.DEBUG -> {}
-                Log.INFO -> Log.i(TAG, message, t)
-                Log.WARN -> Log.w(TAG, "${this.tag}/ $message", t)
-                Log.ERROR, Log.ASSERT -> Log.e(TAG, "${this.tag}/ $message", t)
-            }
-        }
-
-        companion object {
-            // ----  BEGIN copied from Timber.DebugTree because DebugTree.getTag() is package private ----
-            private const val CALL_STACK_INDEX = 6
-            private val ANONYMOUS_CLASS = Pattern.compile("(\\$\\d+)+$")
+    override fun opExecuted(
+        changes: OpChanges,
+        handler: Any?,
+    ) {
+        Timber.d("ChangeSubscriber - opExecuted called with changes: $changes")
+        if (changes.studyQueues) {
+            DeckPickerWidget.updateDeckPickerWidgets(this)
+            CardAnalysisWidget.updateCardAnalysisWidgets(this)
+        } else {
+            Timber.d("No relevant changes to update the widget")
         }
     }
 
     companion object {
-        /** Running under instrumentation. a "/androidTest" directory will be created which contains a test collection  */
-        var INSTRUMENTATION_TESTING = false
+        /**
+         * [CoroutineScope] tied to the [Application], allowing executing of tasks which should
+         * execute as long as the app is running
+         *
+         * This scope is bound by default to [Dispatchers.Main.immediate][kotlinx.coroutines.MainCoroutineDispatcher.immediate].
+         * Use an alternate dispatcher if the main thread is not required: [Dispatchers.Default] or [Dispatchers.IO]
+         *
+         * This scope will not be cancelled; exceptions are handled by [SupervisorJob]
+         *
+         * See: [Operations that shouldn't be cancelled in Coroutines](https://medium.com/androiddevelopers/coroutines-patterns-for-work-that-shouldnt-be-cancelled-e26c40f142ad#d425)
+         *
+         * This replicates the manner which `lifecycleScope`/`viewModelScope` is exposed in Android
+         */
+        // lazy init required due to kotlinx-coroutines-test 1.10.0:
+        // Main was accessed when the platform dispatcher was absent and the test dispatcher
+        // was unset
+        val applicationScope by lazy { CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate) }
 
         /**
-         * Toggles Scoped Storage functionality introduced in later commits
+         * A [SharedPreferencesProvider] which does not require [onCreate] when run from tests
          *
-         *
-         * Can be set to true or false only by altering the declaration itself.
-         * This restriction ensures that this flag will only be used by developers for testing
-         *
-         *
-         * Set to false by default, so won't migrate data or use new scoped dirs
-         *
-         *
-         * If true, enables data migration & use of scoped dirs in later commits
-         *
-         *
-         * Should be set to true for testing Scoped Storage
-         *
-         *
-         * TODO: Should be removed once app is fully functional under Scoped Storage
+         * @see sharedPreferencesTestingOverride
          */
-        var TESTING_SCOPED_STORAGE = false
+        val sharedPreferencesProvider get() = SharedPreferencesProvider { sharedPrefs() }
+
+        /** Running under instrumentation. a "/androidTest" directory will be created which contains a test collection  */
+        @Suppress("ktlint:standard:property-naming")
+        var INSTRUMENTATION_TESTING = false
         const val XML_CUSTOM_NAMESPACE = "http://arbitrary.app.namespace/com.ichi2.anki"
         const val ANDROID_NAMESPACE = "http://schemas.android.com/apk/res/android"
 
@@ -312,6 +363,23 @@ open class AnkiDroidApp : Application() {
             private set
 
         /**
+         * An override for Shared Preferences to use for unit tests
+         *
+         * This does not depend on an instance of AnkiDroidApp and therefore has no Android
+         * implementations
+         */
+        @VisibleForTesting
+        var sharedPreferencesTestingOverride: SharedPreferences? = null
+
+        /**
+         * A test-friendly accessor to Shared Preferences.
+         *
+         * In tests, this can avoid an instance of `AnkiDroidApp`, which is slow
+         * This was added to avoid code churn
+         */
+        fun sharedPrefs() = sharedPreferencesTestingOverride ?: instance.sharedPrefs()
+
+        /**
          * The latest package version number that included important changes to the database integrity check routine. All
          * collections being upgraded to (or after) this version must run an integrity check as it will contain fixes that
          * all collections should have.
@@ -321,9 +389,6 @@ open class AnkiDroidApp : Application() {
         /** HACK: Whether an exception report has been thrown - TODO: Rewrite an ACRA Listener to do this  */
         @VisibleForTesting
         var sentExceptionReportHack = false
-        fun getResourceAsStream(name: String): InputStream {
-            return instance.applicationContext.classLoader.getResourceAsStream(name)
-        }
 
         @get:JvmName("isInitialized")
         val isInitialized: Boolean
@@ -349,83 +414,22 @@ open class AnkiDroidApp : Application() {
             }
         }
 
-        /**
-         * Convenience method for accessing Shared preferences
-         *
-         * @param context Context to get preferences for.
-         * @return A SharedPreferences object for this instance of the app.
-         */
-        @Suppress("deprecation") // TODO Tracked in https://github.com/ankidroid/Anki-Android/issues/5019
-        fun getSharedPrefs(context: Context?): SharedPreferences {
-            return android.preference.PreferenceManager.getDefaultSharedPreferences(context)
+        /** Load the libraries to allow access to Anki-Android-Backend */
+        @NeedsTest("Not calling this in the ContentProvider should have failed a test")
+        fun makeBackendUsable(context: Context) {
+            // Robolectric uses RustBackendLoader.ensureSetup()
+            if (Build.FINGERPRINT == "robolectric") return
+
+            // Prevent sqlite throwing error 6410 due to the lack of /tmp on Android
+            Os.setenv("TMPDIR", context.cacheDir.path, false)
+            // Load backend library
+            System.loadLibrary("rsdroid")
         }
 
-        val cacheStorageDirectory: String
-            get() = instance.cacheDir.absolutePath
         val appResources: Resources
             get() = instance.resources
         val isSdCardMounted: Boolean
             get() = Environment.MEDIA_MOUNTED == Environment.getExternalStorageState()
-
-        /**
-         * Returns a Context with the correct, saved language, to be attached using attachBase().
-         * For old APIs directly sets language using deprecated functions
-         *
-         * @param remoteContext The base context offered by attachBase() to be passed to super.attachBase().
-         * Can be modified here to set correct GUI language.
-         */
-        fun updateContextWithLanguage(remoteContext: Context): Context {
-            return try {
-                // sInstance (returned by getInstance() ) set during application OnCreate()
-                // if getInstance() is null, the method is called during applications attachBaseContext()
-                // and preferences need mBase directly (is provided by remoteContext during attachBaseContext())
-                val preferences = if (isInitialized) {
-                    getSharedPrefs(instance.baseContext)
-                } else {
-                    getSharedPrefs(remoteContext)
-                }
-                val langConfig =
-                    getLanguageConfig(remoteContext.resources.configuration, preferences)
-                remoteContext.createConfigurationContext(langConfig)
-            } catch (e: Exception) {
-                Timber.e(e, "failed to update context with new language")
-                // during AnkiDroidApp.attachBaseContext() ACRA is not initialized, so the exception report will not be sent
-                sendExceptionReport(e, "AnkiDroidApp.updateContextWithLanguage")
-                remoteContext
-            }
-        }
-
-        /**
-         * Creates and returns a new configuration with the chosen GUI language that is saved in the preferences
-         *
-         * @param remoteConfig The configuration of the remote context to set the language for
-         * @param prefs
-         */
-        private fun getLanguageConfig(
-            remoteConfig: Configuration,
-            prefs: SharedPreferences
-        ): Configuration {
-            val newConfig = Configuration(remoteConfig)
-            val newLocale = LanguageUtil.getLocale(prefs.getLanguage(), prefs)
-            Timber.d("AnkiDroidApp::getLanguageConfig - setting locale to %s", newLocale)
-            // API level >=24
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.N) {
-                // Build list of locale strings, separated by commas: newLocale as first element
-                var strLocaleList = newLocale.toLanguageTag()
-                // if Anki locale from settings is no equal to system default, add system default as second item
-                // LocaleList must not contain language tags twice, will crash otherwise!
-                if (!strLocaleList.contains(Locale.getDefault().toLanguageTag())) {
-                    strLocaleList = strLocaleList + "," + Locale.getDefault().toLanguageTag()
-                }
-                val newLocaleList = LocaleList.forLanguageTags(strLocaleList)
-                // first element of setLocales() is automatically setLocal()
-                newConfig.setLocales(newLocaleList)
-            } else {
-                // API level >=17 but <24
-                newConfig.setLocale(newLocale)
-            }
-            return newConfig
-        }
 
         fun getMarketIntent(context: Context): Intent {
             val uri =
@@ -433,42 +437,40 @@ open class AnkiDroidApp : Application() {
             val parsed = Uri.parse(uri)
             return Intent(Intent.ACTION_VIEW, parsed)
         } // TODO actually this can be done by translating "link_help" string for each language when the App is
-        // properly translated
+
         /**
-         * Get the url for the feedback page
+         * Get the url for the properly translated feedback page
          * @return
          */
         val feedbackUrl: String
             get() = // TODO actually this can be done by translating "link_help" string for each language when the App is
                 // properly translated
-                when (getSharedPrefs(instance).getCurrentLanguage()) {
+                when (LanguageUtil.getCurrentLocaleTag()) {
                     "ja" -> appResources.getString(R.string.link_help_ja)
                     "zh" -> appResources.getString(R.string.link_help_zh)
                     "ar" -> appResources.getString(R.string.link_help_ar)
                     else -> appResources.getString(R.string.link_help)
                 } // TODO actually this can be done by translating "link_manual" string for each language when the App is
-        // properly translated
+
         /**
-         * Get the url for the manual
+         * Get the url for the properly translated manual
          * @return
          */
         val manualUrl: String
             get() = // TODO actually this can be done by translating "link_manual" string for each language when the App is
                 // properly translated
-                when (getSharedPrefs(instance).getCurrentLanguage()) {
+                when (LanguageUtil.getCurrentLocaleTag()) {
                     "ja" -> appResources.getString(R.string.link_manual_ja)
                     "zh" -> appResources.getString(R.string.link_manual_zh)
                     "ar" -> appResources.getString(R.string.link_manual_ar)
                     else -> appResources.getString(R.string.link_manual)
                 }
 
-        fun webViewFailedToLoad(): Boolean {
-            return instance.mWebViewError != null
-        }
+        fun webViewFailedToLoad(): Boolean = instance.webViewError != null
 
         val webViewErrorMessage: String?
             get() {
-                val error = instance.mWebViewError
+                val error = instance.webViewError
                 if (error == null) {
                     Timber.w("getWebViewExceptionMessage called without webViewFailedToLoad check")
                     return null

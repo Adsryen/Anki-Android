@@ -18,16 +18,49 @@ package com.ichi2.compat
 
 import android.annotation.TargetApi
 import android.content.Intent
-import android.os.Parcelable
+import android.content.pm.PackageInfo
+import android.content.pm.PackageManager
+import android.content.pm.ResolveInfo
+import android.os.Bundle
 import java.io.Serializable
 
 @TargetApi(33)
-open class CompatV33 : CompatV31(), Compat {
-    override fun <T : Serializable?> getSerializableExtra(intent: Intent, name: String, className: Class<T>): T? {
-        return intent.getSerializableExtra(name, className)
-    }
+open class CompatV33 :
+    CompatV31(),
+    Compat {
+    override fun resolveActivity(
+        packageManager: PackageManager,
+        intent: Intent,
+        flags: ResolveInfoFlagsCompat,
+    ): ResolveInfo? = packageManager.resolveActivity(intent, PackageManager.ResolveInfoFlags.of(flags.value))
 
-    override fun <T : Parcelable?> getParcelableExtra(intent: Intent, name: String, clazz: Class<T>): T? {
-        return intent.getParcelableExtra(name, clazz)
-    }
+    override fun <T : Serializable?> getSerializableExtra(
+        intent: Intent,
+        name: String,
+        className: Class<T>,
+    ): T? = intent.getSerializableExtra(name, className)
+
+    override fun <T : Serializable?> getSerializable(
+        bundle: Bundle,
+        key: String,
+        clazz: Class<T>,
+    ): T? = bundle.getSerializable(key, clazz)
+
+    override fun getPackageInfo(
+        packageManager: PackageManager,
+        packageName: String,
+        flags: PackageInfoFlagsCompat,
+    ): PackageInfo? = packageManager.getPackageInfo(packageName, PackageManager.PackageInfoFlags.of(flags.value))
+
+    override fun resolveService(
+        packageManager: PackageManager,
+        intent: Intent,
+        flags: ResolveInfoFlagsCompat,
+    ): ResolveInfo? = packageManager.resolveService(intent, PackageManager.ResolveInfoFlags.of(flags.value))
+
+    override fun queryIntentActivities(
+        packageManager: PackageManager,
+        intent: Intent,
+        flags: ResolveInfoFlagsCompat,
+    ): List<ResolveInfo> = packageManager.queryIntentActivities(intent, PackageManager.ResolveInfoFlags.of(flags.value))
 }

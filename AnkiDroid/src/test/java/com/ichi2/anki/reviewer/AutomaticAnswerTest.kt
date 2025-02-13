@@ -19,6 +19,7 @@ package com.ichi2.anki.reviewer
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import com.ichi2.anki.reviewer.AutomaticAnswer.AutomaticallyAnswered
 import com.ichi2.testutils.EmptyApplication
+import com.ichi2.testutils.JvmTest
 import org.hamcrest.CoreMatchers.equalTo
 import org.hamcrest.MatcherAssert.assertThat
 import org.junit.Test
@@ -29,8 +30,7 @@ import org.robolectric.shadows.ShadowLooper.runUiThreadTasksIncludingDelayedTask
 
 @RunWith(AndroidJUnit4::class)
 @Config(application = EmptyApplication::class)
-class AutomaticAnswerTest {
-
+class AutomaticAnswerTest : JvmTest() {
     @Test
     fun disableWorks() {
         val answer = validAnswer(automaticallyAnsweredMock())
@@ -49,14 +49,15 @@ class AutomaticAnswerTest {
 
     @Test
     fun noExecutionIfTimerIsZero_issue8923() {
-        val answer = AutomaticAnswer(
-            target = automaticallyAnsweredMock(),
-            settings = AutomaticAnswerSettings(
-                useTimer = true,
-                questionDelaySeconds = 0,
-                answerDelaySeconds = 0
+        val answer =
+            AutomaticAnswer(
+                target = automaticallyAnsweredMock(),
+                settings =
+                    AutomaticAnswerSettings(
+                        secondsToShowQuestionFor = 0.0,
+                        secondsToShowAnswerFor = 0.0,
+                    ),
             )
-        )
 
         answer.scheduleAutomaticDisplayQuestion(10)
 
@@ -85,11 +86,11 @@ class AutomaticAnswerTest {
 
         answer.scheduleAutomaticDisplayAnswer()
         waitForTaskCompletion()
-        assertThat("answer should be shown", answerValue.answerShown, equalTo(true))
+        assertThat("answer should be shown", answerValue.answerShown)
 
         answer.scheduleAutomaticDisplayQuestion()
         waitForTaskCompletion()
-        assertThat("question should be shown", answerValue.questionShown, equalTo(true))
+        assertThat("question should be shown", answerValue.questionShown)
     }
 
     @Test
@@ -118,16 +119,37 @@ class AutomaticAnswerTest {
         runUiThreadTasksIncludingDelayedTasks()
     }
 
-    private fun validAnswer(automaticallyAnswered: AutomaticallyAnswered? = null) = AutomaticAnswer(
-        target = automaticallyAnswered ?: automaticallyAnsweredMock(),
-        settings = AutomaticAnswerSettings(
-            useTimer = true,
-            questionDelaySeconds = 10,
-            answerDelaySeconds = 10
-        )
-    )
+    private fun validAnswer(automaticallyAnswered: AutomaticallyAnswered? = null): AutomaticAnswer {
+        var automaticAnswerHandle: AutomaticAnswer? = null
 
-    private class AutoAnswerMock(var answerShown: Boolean = false, var questionShown: Boolean = false) : AutomaticallyAnswered {
+        val automaticAnswerHandler =
+            object : AutomaticallyAnswered {
+                override fun automaticShowAnswer() {
+                    automaticAnswerHandle?.simulateCardFlip()
+                    automaticallyAnswered?.automaticShowAnswer()
+                }
+
+                override fun automaticShowQuestion(action: AutomaticAnswerAction) {
+                    automaticAnswerHandle?.simulateCardFlip()
+                    automaticallyAnswered?.automaticShowQuestion(action)
+                }
+            }
+        return AutomaticAnswer(
+            target = automaticAnswerHandler,
+            settings =
+                AutomaticAnswerSettings(
+                    secondsToShowQuestionFor = 10.0,
+                    secondsToShowAnswerFor = 10.0,
+                ),
+        ).apply {
+            automaticAnswerHandle = this
+        }
+    }
+
+    private class AutoAnswerMock(
+        var answerShown: Boolean = false,
+        var questionShown: Boolean = false,
+    ) : AutomaticallyAnswered {
         override fun automaticShowAnswer() {
             answerShown = true
         }

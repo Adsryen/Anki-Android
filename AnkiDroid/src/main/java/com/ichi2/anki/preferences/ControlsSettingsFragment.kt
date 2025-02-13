@@ -15,10 +15,15 @@
  */
 package com.ichi2.anki.preferences
 
-import androidx.preference.PreferenceCategory
+import android.content.res.Configuration
+import androidx.annotation.StringRes
+import androidx.preference.Preference
+import com.ichi2.anki.CollectionManager.TR
 import com.ichi2.anki.R
 import com.ichi2.anki.cardviewer.ViewerCommand
 import com.ichi2.anki.reviewer.MappableBinding.Companion.toPreferenceString
+import com.ichi2.anki.ui.internationalization.toSentenceCase
+import com.ichi2.annotations.NeedsTest
 import com.ichi2.preferences.ControlPreference
 
 class ControlsSettingsFragment : SettingsFragment() {
@@ -27,20 +32,68 @@ class ControlsSettingsFragment : SettingsFragment() {
     override val analyticsScreenNameConstant: String
         get() = "prefs.controls"
 
+    @NeedsTest("Keys and titles in the XML layout are the same of the ViewerCommands")
     override fun initSubscreen() {
-        val commandMappingCategory = requirePreference<PreferenceCategory>(R.string.controls_command_mapping_cat_key)
-        addAllControlPreferencesToCategory(commandMappingCategory)
-    }
+        val commands = ViewerCommand.entries.associateBy { it.preferenceKey }
+        // set defaultValue in the prefs creation.
+        // if a preference is empty, it has a value like "1/"
+        allPreferences()
+            .filterIsInstance<ControlPreference>()
+            .filter { pref -> pref.value == null }
+            .forEach { pref -> pref.value = commands[pref.key]?.defaultValue?.toPreferenceString() }
 
-    /** Attaches all possible [ControlPreference] elements to a given [PreferenceCategory] */
-    fun addAllControlPreferencesToCategory(category: PreferenceCategory) {
-        for (command in ViewerCommand.values()) {
-            val preference = ControlPreference(category.context).apply {
-                setTitle(command.resourceId)
-                key = command.preferenceKey
-                setDefaultValue(command.defaultValue.toPreferenceString())
+        setDynamicTitle()
+
+        // TODO replace the preference with something dismissible. This is meant only to improve
+        //  the discoverability of the system shortcut for the shortcuts dialog.
+        requirePreference<Preference>(R.string.pref_keyboard_shortcuts_key).apply {
+            isVisible = resources.configuration.keyboard == Configuration.KEYBOARD_QWERTY
+            setOnPreferenceClickListener {
+                requireActivity().requestShowKeyboardShortcuts()
+                true
             }
-            category.addPreference(preference)
         }
     }
+
+    private fun setDynamicTitle() {
+        findPreference<ControlPreference>(getString(R.string.reschedule_command_key))?.let {
+            val preferenceTitle = TR.actionsSetDueDate().toSentenceCase(R.string.sentence_set_due_date)
+            it.title = preferenceTitle
+            it.dialogTitle = preferenceTitle
+        }
+        findPreference<ControlPreference>(getString(R.string.toggle_whiteboard_command_key))?.let {
+            it.title = getString(R.string.gesture_toggle_whiteboard).toSentenceCase(R.string.sentence_gesture_toggle_whiteboard)
+        }
+        findPreference<ControlPreference>(getString(R.string.abort_and_sync_command_key))?.let {
+            it.title = getString(R.string.gesture_abort_sync).toSentenceCase(R.string.sentence_gesture_abort_sync)
+        }
+        findPreference<ControlPreference>(getString(R.string.flag_red_command_key))?.let {
+            it.title = getString(R.string.gesture_flag_red).toSentenceCase(R.string.sentence_gesture_flag_red)
+        }
+        findPreference<ControlPreference>(getString(R.string.flag_orange_command_key))?.let {
+            it.title = getString(R.string.gesture_flag_orange).toSentenceCase(R.string.sentence_gesture_flag_orange)
+        }
+        findPreference<ControlPreference>(getString(R.string.flag_green_command_key))?.let {
+            it.title = getString(R.string.gesture_flag_green).toSentenceCase(R.string.sentence_gesture_flag_green)
+        }
+        findPreference<ControlPreference>(getString(R.string.flag_blue_command_key))?.let {
+            it.title = getString(R.string.gesture_flag_blue).toSentenceCase(R.string.sentence_gesture_flag_blue)
+        }
+        findPreference<ControlPreference>(getString(R.string.flag_pink_command_key))?.let {
+            it.title = getString(R.string.gesture_flag_pink).toSentenceCase(R.string.sentence_gesture_flag_pink)
+        }
+        findPreference<ControlPreference>(getString(R.string.flag_turquoise_command_key))?.let {
+            it.title = getString(R.string.gesture_flag_turquoise).toSentenceCase(R.string.sentence_gesture_flag_turquoise)
+        }
+        findPreference<ControlPreference>(getString(R.string.flag_purple_command_key))?.let {
+            it.title = getString(R.string.gesture_flag_purple).toSentenceCase(R.string.sentence_gesture_flag_purple)
+        }
+        findPreference<ControlPreference>(getString(R.string.remove_flag_command_key))?.let {
+            it.title = getString(R.string.gesture_flag_remove).toSentenceCase(R.string.sentence_gesture_flag_remove)
+        }
+    }
+
+    private fun String.toSentenceCase(
+        @StringRes resId: Int,
+    ): String = this.toSentenceCase(this@ControlsSettingsFragment, resId)
 }

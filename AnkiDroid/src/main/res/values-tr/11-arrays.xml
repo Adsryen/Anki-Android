@@ -48,30 +48,20 @@
     <string name="error_reporting_choice_ask_user">Bana sor</string>
     <!-- leech_action_labels -->
     <!-- 01-core:menu_suspend_card -->
-    <string name="leech_action_tag_only">Yalnızca etiket</string>
     <!-- new_order_labels -->
-    <string name="new_order_random">Yeni kartlar rastgele sırada</string>
-    <string name="new_order_order_added">Yeni kartlar ekleniş sırasına göre</string>
     <!-- cram_deck_conf_order_labels -->
-    <string name="cram_deck_conf_order_oldest_seen_first">Önce en eski görüntülenir</string>
+    <string name="cram_deck_conf_order_oldest_seen_first">Önce en eski görülenler</string>
     <string name="cram_deck_conf_order_random">Rastgele</string>
     <string name="cram_deck_conf_order_increasing_intervals">Artan aralıkta</string>
     <string name="cram_deck_conf_order_decreasing_intervals">Azalan aralıkta</string>
-    <string name="cram_deck_conf_order_most_lapsed">En çok yanıltan</string>
+    <string name="cram_deck_conf_order_most_lapsed">En çok hata</string>
     <string name="cram_deck_conf_order_order_added">Ekleniş sırası</string>
     <string name="cram_deck_conf_order_order_due">Çıkma sırası</string>
-    <string name="cram_deck_conf_order_latest_added_first">En son eklenenler ilk</string>
+    <string name="cram_deck_conf_order_latest_added_first">Önce en son eklenenler</string>
     <string name="cram_deck_conf_order_relative_overdueness">Görece vadesi geçmişlik</string>
     <!-- add_to_cur_labels -->
     <string name="add_to_deck_use_current_deck">Geçerli desteyi kullan</string>
     <string name="add_to_deck_decide_by_note_type">Not türüne göre karar ver</string>
-    <!-- new_spread_labels -->
-    <string name="new_spread_mix_new_and_review">Yeni kartları ve çalışmaları karıştır</string>
-    <string name="new_spread_new_after_review">Yeni kartlar çalışmalardan sonra</string>
-    <string name="new_spread_new_before_review">Yeni kartlar çalışmalardan önce</string>
-    <!-- override_font_labels -->
-    <string name="override_font_if_missing">Bilgi kartlarında font belirtilmediği zaman</string>
-    <string name="override_font_always">Her zaman</string>
     <!-- theme labels -->
     <string name="theme_follow_system">Sistemi izle</string>
     <!-- day_theme_labels -->
@@ -89,30 +79,27 @@
     <string name="html_size_code_x_large">çok büyük</string>
     <string name="html_size_code_xx_large">çok çok büyük</string>
     <!-- gestures_labels -->
-    <string name="gesture_answer_1">Cevap butonu 1</string>
-    <string name="gesture_answer_2">Cevap butonu 2</string>
-    <string name="gesture_answer_3">Cevap butonu 3</string>
-    <string name="gesture_answer_4">Cevap butonu 4</string>
-    <string name="gesture_answer_green">Önerilen cevabı (yeşil) ver</string>
-    <string name="gesture_answer_better_recommended">Önerilenden daha iyi cevap ver</string>
-    <string name="gesture_play">Medyayı oynat</string>
-    <string name="gesture_abort_learning">Öğrenmeyi durdur</string>
-    <string name="gesture_flag_red">Kırmızı bayrağı etkinleştir</string>
-    <string name="gesture_flag_orange">Turuncu bayrağı etkinleştir</string>
-    <string name="gesture_flag_green">Yeşil bayrağı etkinleştir</string>
-    <string name="gesture_flag_blue">Mavi bayrağı etkinleştir</string>
-    <string name="gesture_flag_pink">Pembe Bayrağı Etkinleştir</string>
-    <string name="gesture_flag_turquoise">Turkuaz Bayrağı Etkinleştir</string>
-    <string name="gesture_flag_purple">Mor Bayrağı Etkinleştir</string>
-    <string name="gesture_flag_remove">Bayrağı sil</string>
-    <string name="gesture_page_up">Yukarı</string>
-    <string name="gesture_page_down">Aşağı</string>
-    <string name="gesture_abort_sync">Öğrenmeyi ve senkronizasyonu iptal et</string>
-    <string name="gesture_toggle_whiteboard">Yazı tahtasını etkinleştir</string>
-    <string name="gesture_show_hint">İpucu Göster</string>
-    <string name="gesture_show_all_hints">Tüm İpuçlarını Göster</string>
-    <string name="record_voice">Ses kaydet</string>
-    <string name="replay_voice">Sesi tekrar oynat</string>
-    <string name="automatic_answer_option_2">Zor (mevcut değilse iyi)</string>
-    <string name="automatic_answer_option_4">Kolay (Müsait değilse iyi)</string>
+    <string name="answer_again" maxLength="41">Tekrar cevapla</string>
+    <string name="answer_hard" maxLength="41">Zor cevapla</string>
+    <string name="answer_good" maxLength="41">İyi cevapla</string>
+    <string name="answer_easy" maxLength="41">Kolay cevapla</string>
+    <string name="gesture_play" maxLength="41">Medyayı oynat</string>
+    <string name="gesture_abort_learning" maxLength="41">Çalışmayı kapat</string>
+    <string name="gesture_flag_red" maxLength="41">Kırmızı Bayrağı Aç/Kapat</string>
+    <string name="gesture_flag_orange" maxLength="41">Turuncu Bayrağı Aç/Kapat</string>
+    <string name="gesture_flag_green" maxLength="41">Yeşil Bayrağı Aç/Kapat</string>
+    <string name="gesture_flag_blue" maxLength="41">Mavi Bayrağı Aç/Kapat</string>
+    <string name="gesture_flag_pink" maxLength="41">Pembe Bayrağı Aç/Kapat</string>
+    <string name="gesture_flag_turquoise" maxLength="41">Turkuaz Bayrağı Aç/Kapat</string>
+    <string name="gesture_flag_purple" maxLength="41">Mor Bayrağı Aç/Kapat</string>
+    <string name="gesture_flag_remove" maxLength="41">Bayrağı Kaldır</string>
+    <string name="gesture_page_up" maxLength="41">Yukarı</string>
+    <string name="gesture_page_down" maxLength="41">Aşağı</string>
+    <string name="gesture_abort_sync" maxLength="41">Çalışmayı kapatıp senkronize et</string>
+    <string name="gesture_toggle_whiteboard" maxLength="41">Yazı Tahtasını Aç/Kapat</string>
+    <string name="gesture_show_hint" maxLength="41">İpucu Göster</string>
+    <string name="gesture_show_all_hints" maxLength="41">Tüm İpuçlarını Göster</string>
+    <string name="record_voice" maxLength="41">Ses kaydet</string>
+    <string name="replay_voice" maxLength="41">Sesi tekrar oynat</string>
+    <string name="save_voice" maxLength="41">Kaydı Kaydet</string>
 </resources>

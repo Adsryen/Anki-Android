@@ -21,40 +21,51 @@ import android.view.Gravity
 import android.widget.LinearLayout
 import android.widget.SeekBar
 import android.widget.SeekBar.OnSeekBarChangeListener
-import com.afollestad.materialdialogs.MaterialDialog
-import com.afollestad.materialdialogs.customview.customView
+import androidx.appcompat.app.AlertDialog
 import com.ichi2.anki.R
 import com.ichi2.ui.FixedTextView
+import com.ichi2.utils.negativeButton
+import com.ichi2.utils.positiveButton
+import com.ichi2.utils.show
+import com.ichi2.utils.title
 import java.util.function.Consumer
 
-class WhiteBoardWidthDialog(private val context: Context, private var wbStrokeWidth: Int) {
-    private var mWbStrokeWidthText: FixedTextView? = null
+class WhiteBoardWidthDialog(
+    private val context: Context,
+    private var wbStrokeWidth: Int,
+) {
+    private var strokeWidthText: FixedTextView? = null
     var onStrokeWidthChanged: Consumer<Int>? = null
-    private val seekBarChangeListener: OnSeekBarChangeListener = object : OnSeekBarChangeListener {
-        override fun onProgressChanged(seekBar: SeekBar, value: Int, b: Boolean) {
-            wbStrokeWidth = value
-            mWbStrokeWidthText!!.text = "" + value
-        }
+    private val seekBarChangeListener: OnSeekBarChangeListener =
+        object : OnSeekBarChangeListener {
+            override fun onProgressChanged(
+                seekBar: SeekBar,
+                value: Int,
+                b: Boolean,
+            ) {
+                wbStrokeWidth = value
+                strokeWidthText!!.text = "" + value
+            }
 
-        override fun onStartTrackingTouch(seekBar: SeekBar) {
-            // intentionally blank
-        }
+            override fun onStartTrackingTouch(seekBar: SeekBar) {
+                // intentionally blank
+            }
 
-        override fun onStopTrackingTouch(seekBar: SeekBar) {
-            // intentionally blank
+            override fun onStopTrackingTouch(seekBar: SeekBar) {
+                // intentionally blank
+            }
         }
-    }
 
     fun showStrokeWidthDialog() {
         val layout = LinearLayout(context)
         layout.orientation = LinearLayout.VERTICAL
-        layout.setPadding(6, 6, 6, 6)
-        mWbStrokeWidthText = FixedTextView(context)
-        mWbStrokeWidthText!!.gravity = Gravity.CENTER_HORIZONTAL
-        mWbStrokeWidthText!!.textSize = 30f
-        mWbStrokeWidthText!!.text = "" + wbStrokeWidth
+        layout.setPaddingRelative(6, 6, 6, 6)
+        strokeWidthText = FixedTextView(context)
+        strokeWidthText!!.gravity = Gravity.CENTER_HORIZONTAL
+        strokeWidthText!!.textSize = 30f
+        strokeWidthText!!.text = "" + wbStrokeWidth
         val params = LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT)
-        layout.addView(mWbStrokeWidthText, params)
+        layout.addView(strokeWidthText, params)
         val seekBar = SeekBar(context)
         seekBar.progress = wbStrokeWidth
         seekBar.setOnSeekBarChangeListener(seekBarChangeListener)
@@ -62,18 +73,16 @@ class WhiteBoardWidthDialog(private val context: Context, private var wbStrokeWi
             seekBar,
             LinearLayout.LayoutParams(
                 LinearLayout.LayoutParams.MATCH_PARENT,
-                LinearLayout.LayoutParams.WRAP_CONTENT
-            )
+                LinearLayout.LayoutParams.WRAP_CONTENT,
+            ),
         )
-        MaterialDialog(context).show {
+        AlertDialog.Builder(context).show {
             title(R.string.whiteboard_stroke_width)
             positiveButton(R.string.save) {
-                if (onStrokeWidthChanged != null) {
-                    onStrokeWidthChanged!!.accept(wbStrokeWidth)
-                }
+                onStrokeWidthChanged?.accept(wbStrokeWidth)
             }
             negativeButton(R.string.dialog_cancel)
-            customView(view = layout, scrollable = true)
+            setView(layout)
         }
     }
 

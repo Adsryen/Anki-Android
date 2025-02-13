@@ -23,16 +23,13 @@ object HashUtil {
      * @param size Number of elements expected in the hash structure
      * @return Initial capacity for the hash structure. Copied from HashMap code
      */
-    private fun capacity(size: Int): Int {
-        return Math.max((size / .75f).toInt() + 1, 16)
-    }
+    private fun capacity(size: Int): Int = ((size / .75f).toInt() + 1).coerceAtLeast(16)
 
-    fun <T> HashSetInit(size: Int): HashSet<T> {
-        return HashSet(capacity(size))
-    }
+    fun <T> hashSetInit(size: Int): HashSet<T> = HashSet(capacity(size))
 
     @KotlinCleanup("return mutableMap")
-    fun <T, U> HashMapInit(size: Int): HashMap<T, U> {
-        return HashMap(capacity(size))
-    }
+    fun <T, U> hashMapInit(size: Int): HashMap<T, U> = HashMap(capacity(size))
 }
+
+/** Provides a hashcode given a series of ints */
+fun hash(vararg values: Int): Int = values.fold(0) { acc, value -> 31 * acc + value }

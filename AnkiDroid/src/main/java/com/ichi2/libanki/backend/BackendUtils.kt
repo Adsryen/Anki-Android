@@ -19,38 +19,24 @@
 package com.ichi2.libanki.backend
 
 import com.google.protobuf.ByteString
-import net.ankiweb.rsdroid.RustCleanup
+import com.ichi2.libanki.utils.LibAnkiAlias
+import com.ichi2.utils.JSONObjectHolder
 import org.json.JSONArray
 import org.json.JSONObject
-import java.io.UnsupportedEncodingException
 
 object BackendUtils {
-    fun from_json_bytes(json: ByteString): JSONObject {
-        return JSONObject(json.toStringUtf8())
-    }
+    @LibAnkiAlias("from_json_bytes")
+    fun fromJsonBytes(json: ByteString): JSONObject = JSONObject(json.toStringUtf8())
 
-    fun jsonToArray(json: ByteString): JSONArray {
-        return JSONArray(json.toStringUtf8())
-    }
+    fun jsonToArray(json: ByteString): JSONArray = JSONArray(json.toStringUtf8())
 
-    fun jsonToString(json: ByteString): String {
-        return json.toStringUtf8()
-    }
-
-    fun jsonToString(json: anki.generic.Json): String {
-        return try {
-            json.json.toString("UTF-8")
-        } catch (e: UnsupportedEncodingException) {
-            throw IllegalStateException("Could not deserialize JSON", e)
-        }
-    }
-
-    @RustCleanup("Confirm edge cases")
-    fun toByteString(conf: Any?): ByteString {
+    fun toByteString(conf: JSONObject): ByteString {
         val asString: String = conf.toString()
         return ByteString.copyFromUtf8(asString)
     }
 
-    @RustCleanup("Confirm edge cases")
-    fun to_json_bytes(json: Any?): ByteString = toByteString(json)
+    @LibAnkiAlias("to_json_bytes")
+    fun toJsonBytes(json: JSONObject): ByteString = toByteString(json)
+
+    fun toJsonBytes(json: JSONObjectHolder): ByteString = toJsonBytes(json.jsonObject)
 }

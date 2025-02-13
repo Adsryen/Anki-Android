@@ -18,15 +18,20 @@ package com.ichi2.anki.dialogs.tags
 import androidx.fragment.app.Fragment
 import com.ichi2.utils.ExtendedFragmentFactory
 
-class TagsDialogFactory(val listener: TagsDialogListener) : ExtendedFragmentFactory() {
-    override fun instantiate(classLoader: ClassLoader, className: String): Fragment {
+class TagsDialogFactory(
+    val listener: TagsDialogListener,
+) : ExtendedFragmentFactory() {
+    override fun instantiate(
+        classLoader: ClassLoader,
+        className: String,
+    ): Fragment {
         val cls = loadFragmentClass(classLoader, className)
         return if (cls == TagsDialog::class.java) {
             newTagsDialog()
-        } else super.instantiate(classLoader, className)
+        } else {
+            super.instantiate(classLoader, className)
+        }
     }
 
-    fun newTagsDialog(): TagsDialog {
-        return TagsDialog(listener)
-    }
+    fun newTagsDialog(): TagsDialog = TagsDialog(listener)
 }

@@ -2,7 +2,6 @@
 <resources xmlns:tools="http://schemas.android.com/tools" tools:ignore="UnusedResources,DuplicateCrowdInStrings">
     <!-- Material UI side margin: http://web.archive.org/web/20180105203433if_/https://material.io/guidelines/layout/metrics-keylines.html#metrics-keylines-keylines-spacing -->
     <dimen name="side_margin">16dp</dimen>
-    <dimen name="touch_target">48dp</dimen>
     <dimen name="default_width">56dp</dimen>
     <dimen name="keyline_1">16dp</dimen>
     <dimen name="study_options_padding">8dp</dimen>
@@ -17,6 +16,7 @@
     <dimen name="dialog_frame_margin">24dp</dimen>
     <dimen name="title_frame_margin_bottom">16dp</dimen>
     <dimen name="content_vertical_padding">8dp</dimen>
+    <dimen name="input_layout_padding">8dp</dimen>
     <dimen name="icon_margin">16dp</dimen>
 
     <!-- Material design typography -->
@@ -32,4 +32,8 @@
     <dimen name="mtrl_snackbar_background_corner_radius">8dp</dimen>
     <dimen name="popup_corner_radius">8dp</dimen>
     <dimen name="dialog_corner_radius">8dp</dimen>
+
+    <dimen name="reviewer_side_margin">8dp</dimen>
+    <dimen name="answer_button_margin_horizontal">3dp</dimen>
+    <dimen name="reviewer_answer_button_textSize">14sp</dimen>
 </resources>

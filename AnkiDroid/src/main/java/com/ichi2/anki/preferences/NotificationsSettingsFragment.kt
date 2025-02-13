@@ -18,12 +18,12 @@ package com.ichi2.anki.preferences
 import android.app.AlarmManager
 import android.content.Context.ALARM_SERVICE
 import android.content.Intent
+import androidx.core.app.PendingIntentCompat
 import androidx.preference.ListPreference
-import androidx.preference.SwitchPreference
+import androidx.preference.SwitchPreferenceCompat
 import com.ichi2.anki.R
 import com.ichi2.anki.services.BootService.Companion.scheduleNotification
 import com.ichi2.anki.services.NotificationService
-import com.ichi2.compat.CompatHelper
 import com.ichi2.libanki.utils.TimeManager
 import com.ichi2.utils.AdaptionUtil
 
@@ -39,9 +39,9 @@ class NotificationsSettingsFragment : SettingsFragment() {
     override fun initSubscreen() {
         if (AdaptionUtil.isXiaomiRestrictedLearningDevice) {
             /** These preferences should be searchable or not based
-             * on this same condition at [Preferences.configureSearchBar] */
-            preferenceScreen.removePreference(requirePreference<SwitchPreference>(R.string.pref_notifications_vibrate_key))
-            preferenceScreen.removePreference(requirePreference<SwitchPreference>(R.string.pref_notifications_blink_key))
+             * on this same condition at [HeaderFragment.configureSearchBar] */
+            preferenceScreen.removePreference(requirePreference<SwitchPreferenceCompat>(R.string.pref_notifications_vibrate_key))
+            preferenceScreen.removePreference(requirePreference<SwitchPreferenceCompat>(R.string.pref_notifications_blink_key))
         }
         // Minimum cards due
         // The number of cards that should be due today in a deck to justify adding a notification.
@@ -49,15 +49,21 @@ class NotificationsSettingsFragment : SettingsFragment() {
             updateNotificationPreference(this)
             setOnPreferenceChangeListener { preference, newValue ->
                 updateNotificationPreference(preference as ListPreference)
-                if ((newValue as String).toInt() < Preferences.PENDING_NOTIFICATIONS_ONLY) {
+                if ((newValue as String).toInt() < PENDING_NOTIFICATIONS_ONLY) {
                     scheduleNotification(TimeManager.time, requireContext())
                 } else {
-                    val intent = CompatHelper.compat.getImmutableBroadcastIntent(
-                        requireContext(), 0,
-                        Intent(requireContext(), NotificationService::class.java), 0
-                    )
+                    val intent =
+                        PendingIntentCompat.getBroadcast(
+                            requireContext(),
+                            0,
+                            Intent(requireContext(), NotificationService::class.java),
+                            0,
+                            false,
+                        )
                     val alarmManager = requireActivity().getSystemService(ALARM_SERVICE) as AlarmManager
-                    alarmManager.cancel(intent)
+                    if (intent != null) {
+                        alarmManager.cancel(intent)
+                    }
                 }
                 true
             }

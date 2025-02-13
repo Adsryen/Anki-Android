@@ -19,21 +19,26 @@ import android.content.res.Resources
 import android.os.Build
 import android.webkit.RenderProcessGoneDetail
 import android.webkit.WebView
-import androidx.annotation.RequiresApi
 import androidx.lifecycle.Lifecycle
+import androidx.test.filters.SdkSuppress
 import com.ichi2.anki.AbstractFlashcardViewer
 import com.ichi2.libanki.Card
 import com.ichi2.libanki.CardId
-import com.ichi2.utils.KotlinCleanup
 import com.ichi2.utils.StrictMock.Companion.strictMock
 import org.hamcrest.MatcherAssert.assertThat
 import org.hamcrest.Matchers.equalTo
 import org.junit.Test
-import org.mockito.Mockito.*
+import org.mockito.Mockito.doNothing
+import org.mockito.Mockito.doReturn
+import org.mockito.Mockito.mock
+import org.mockito.Mockito.never
+import org.mockito.Mockito.spy
+import org.mockito.Mockito.times
+import org.mockito.Mockito.verify
 import org.mockito.kotlin.whenever
 import java.util.concurrent.locks.Lock
 
-@RequiresApi(api = Build.VERSION_CODES.O) // onRenderProcessGone & RenderProcessGoneDetail
+@SdkSuppress(minSdkVersion = Build.VERSION_CODES.O) // onRenderProcessGone & RenderProcessGoneDetail
 class OnRenderProcessGoneDelegateTest {
     @Test
     fun singleCallCausesRefresh() {
@@ -60,11 +65,10 @@ class OnRenderProcessGoneDelegateTest {
         verify(
             mock,
             times(1)
-                .description("displayCardQuestion should not be called again as the screen should close")
-        )
-            .displayCardQuestion()
+                .description("displayCardQuestion should not be called again as the screen should close"),
+        ).displayCardQuestion()
         assertThat(delegate.displayedDialog, equalTo(true))
-        verify(mock, times(1).description("After the dialog, the screen should be closed")).finishWithoutAnimation()
+        verify(mock, times(1).description("After the dialog, the screen should be closed")).finish()
     }
 
     @Test
@@ -81,9 +85,8 @@ class OnRenderProcessGoneDelegateTest {
         verify(
             mock,
             times(2)
-                .description("displayCardQuestion should be called again as the app was minimised")
-        )
-            .displayCardQuestion()
+                .description("displayCardQuestion should be called again as the app was minimised"),
+        ).displayCardQuestion()
         assertThat(delegate.displayedDialog, equalTo(false))
     }
 
@@ -109,7 +112,7 @@ class OnRenderProcessGoneDelegateTest {
         verify(mock, never()).recreateWebViewFrame()
 
         assertThat("A toast should be displayed", delegate.displayedToast, equalTo(true))
-        verify(mock, times(1).description("screen should be closed")).finishWithoutAnimation()
+        verify(mock, times(1).description("screen should be closed")).finish()
     }
 
     @Test
@@ -124,15 +127,17 @@ class OnRenderProcessGoneDelegateTest {
         verify(mock, never()).recreateWebViewFrame()
 
         assertThat("A toast should not be displayed as the screen is minimised", delegate.displayedToast, equalTo(false))
-        verify(mock, times(1).description("screen should be closed")).finishWithoutAnimation()
+        verify(mock, times(1).description("screen should be closed")).finish()
     }
 
     private fun callOnRenderProcessGone(delegate: OnRenderProcessGoneDelegateImpl) {
         callOnRenderProcessGone(delegate, delegate.target.webView)
     }
 
-    @KotlinCleanup("webview nullability")
-    private fun callOnRenderProcessGone(delegate: OnRenderProcessGoneDelegateImpl, webView: WebView?) {
+    private fun callOnRenderProcessGone(
+        delegate: OnRenderProcessGoneDelegateImpl,
+        webView: WebView?,
+    ) {
         val result = delegate.onRenderProcessGone(webView!!, crashDetail)
         assertThat("onRenderProcessGone should only return false if we want the app killed", result, equalTo(true))
     }
@@ -153,7 +158,7 @@ class OnRenderProcessGoneDelegateTest {
         doNothing().whenever(mock).destroyWebViewFrame()
         doNothing().whenever(mock).recreateWebViewFrame()
         doNothing().whenever(mock).displayCardQuestion()
-        doNothing().whenever(mock).finishWithoutAnimation()
+        doNothing().whenever(mock).finish()
         return mock
     }
 
@@ -163,9 +168,7 @@ class OnRenderProcessGoneDelegateTest {
         return ret
     }
 
-    private fun getInstance(mock: AbstractFlashcardViewer?): OnRenderProcessGoneDelegateImpl {
-        return spy(OnRenderProcessGoneDelegateImpl(mock))
-    }
+    private fun getInstance(mock: AbstractFlashcardViewer?): OnRenderProcessGoneDelegateImpl = spy(OnRenderProcessGoneDelegateImpl(mock))
 
     // this value doesn't matter for now as it only defines a string
     private val crashDetail: RenderProcessGoneDetail
@@ -175,9 +178,12 @@ class OnRenderProcessGoneDelegateTest {
             return mock
         }
 
-    class OnRenderProcessGoneDelegateImpl(target: AbstractFlashcardViewer?) : OnRenderProcessGoneDelegate(target!!) {
+    class OnRenderProcessGoneDelegateImpl(
+        target: AbstractFlashcardViewer?,
+    ) : OnRenderProcessGoneDelegate(target!!) {
         var displayedToast = false
         var displayedDialog = false
+
         override fun displayFatalError(detail: RenderProcessGoneDetail) {
             displayedToast = true
         }
@@ -186,7 +192,10 @@ class OnRenderProcessGoneDelegateTest {
             displayedToast = true
         }
 
-        override fun displayRenderLoopDialog(currentCardId: CardId, detail: RenderProcessGoneDetail) {
+        override fun displayRenderLoopDialog(
+            currentCardId: CardId,
+            detail: RenderProcessGoneDetail,
+        ) {
             displayedDialog = true
             onCloseRenderLoopDialog()
         }

@@ -16,8 +16,10 @@
 
 package com.ichi2.compat
 
-import com.ichi2.testutils.*
 import com.ichi2.testutils.AnkiAssert.assertDoesNotThrow
+import com.ichi2.testutils.createTransientDirectory
+import com.ichi2.testutils.createTransientFile
+import com.ichi2.testutils.withTempFile
 import org.hamcrest.CoreMatchers.equalTo
 import org.hamcrest.MatcherAssert.assertThat
 import org.junit.Test
@@ -26,21 +28,23 @@ import org.junit.runners.Parameterized
 import java.io.File
 import java.io.FileNotFoundException
 import java.io.IOException
+import kotlin.test.assertFailsWith
 
 /** Tests for [Compat.deleteFile] */
 @RunWith(Parameterized::class)
 class CompatDeleteFileTest(
     val compat: Compat,
     /** Used in the "Test Results" Window */
-    @Suppress("unused") private val unitTestDescription: String
+    @Suppress("unused") private val unitTestDescription: String,
 ) {
     companion object {
         @JvmStatic // required for Parameters
         @Parameterized.Parameters(name = "{1}")
-        fun data(): Iterable<Array<Any>> = sequence {
-            yield(arrayOf(CompatV21(), "CompatV21"))
-            yield(arrayOf(CompatV26(), "CompatV26"))
-        }.asIterable()
+        fun data(): Iterable<Array<Any>> =
+            sequence {
+                yield(arrayOf(BaseCompat(), "BaseCompat"))
+                yield(arrayOf(CompatV26(), "CompatV26"))
+            }.asIterable()
     }
 
     @Test
@@ -61,14 +65,14 @@ class CompatDeleteFileTest(
     fun delete_fails_if_exists_is_false() {
         val dir = createTransientDirectory()
         dir.delete()
-        assertThrows<FileNotFoundException> { deleteFile(dir) }
+        assertFailsWith<FileNotFoundException> { deleteFile(dir) }
     }
 
     @Test
     fun delete_fails_if_not_empty_directory() {
         // Note: Exception is a DirectoryNotEmptyException in V26
         val dir = createTransientDirectory().withTempFile("foo.txt")
-        assertThrowsSubclass<IOException> { deleteFile(dir) }
+        assertFailsWith<IOException> { deleteFile(dir) }
     }
 
     private fun deleteFile(file: File) = compat.deleteFile(file)

@@ -15,14 +15,6 @@
  ****************************************************************************************/
 package com.ichi2.libanki
 
-fun CollectionV16.getDeckConfigRaw(input: ByteArray): ByteArray {
-    return backend.getDeckConfigRaw(input)
-}
+fun Collection.getDeckConfigsForUpdateRaw(input: ByteArray): ByteArray = backend.getDeckConfigsForUpdateRaw(input)
 
-fun CollectionV16.getDeckConfigsForUpdateRaw(input: ByteArray): ByteArray {
-    return backend.getDeckConfigsForUpdateRaw(input)
-}
-
-fun CollectionV16.updateDeckConfigsRaw(input: ByteArray): ByteArray {
-    return backend.updateDeckConfigsRaw(input)
-}
+fun Collection.updateDeckConfigsRaw(input: ByteArray): ByteArray = backend.updateDeckConfigsRaw(input)

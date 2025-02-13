@@ -18,12 +18,17 @@ package com.ichi2.anki.reviewer
 
 import android.content.Context
 import android.os.SystemClock
-import android.util.TypedValue
 import android.view.View
 import android.widget.Chronometer
+import androidx.annotation.MainThread
 import androidx.annotation.VisibleForTesting
+import com.google.android.material.color.MaterialColors
+import com.ichi2.anki.CollectionManager.withCol
 import com.ichi2.anki.R
 import com.ichi2.libanki.Card
+import com.ichi2.libanki.Collection
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
 
 /**
  * Responsible for pause/resume of the card timer and the UI element displaying the amount of time to answer a card
@@ -36,8 +41,9 @@ import com.ichi2.libanki.Card
  *
  * @see [Card.timeTaken] - used by the scheduler
  */
-class AnswerTimer(private val cardTimer: Chronometer) {
-
+class AnswerTimer(
+    private val cardTimer: Chronometer,
+) {
     @VisibleForTesting
     var limit: Int = 0
         private set
@@ -51,14 +57,18 @@ class AnswerTimer(private val cardTimer: Chronometer) {
         private set
 
     /**
-     * Changes the timer visibility based on [Card.showTimer],
+     * Changes the timer visibility based on [Card.shouldShowTimer],
      * resets the timer to an initial state and starts it
      *
      * This may also change the limit, based on [Card.timeLimit]
      */
-    fun setupForCard(newCard: Card) {
+    @MainThread // resetTimerUI
+    fun setupForCard(
+        col: Collection,
+        newCard: Card,
+    ) {
         currentCard = newCard
-        showTimer = newCard.showTimer()
+        showTimer = newCard.shouldShowTimer(col)
         if (showTimer && cardTimer.visibility == View.INVISIBLE) {
             cardTimer.visibility = View.VISIBLE
         } else if (!showTimer && cardTimer.visibility != View.INVISIBLE) {
@@ -69,26 +79,24 @@ class AnswerTimer(private val cardTimer: Chronometer) {
         if (!showTimer) {
             cardTimer.stop()
         } else {
-            resetTimerUI(newCard)
+            resetTimerUI(col, newCard)
         }
     }
 
-    private fun resetTimerUI(newCard: Card) {
-        val typedValue = TypedValue()
+    @MainThread // cardTimer.base
+    private fun resetTimerUI(col: Collection, newCard: Card) {
         // Set normal timer color
-        getTheme().resolveAttribute(android.R.attr.textColor, typedValue, true)
-        cardTimer.setTextColor(typedValue.data)
+        cardTimer.setTextColor(MaterialColors.getColor(context, android.R.attr.textColor, 0))
 
         cardTimer.base = elapsedRealTime
         cardTimer.start()
 
         // Stop and highlight the timer if it reaches the time limit.
-        getTheme().resolveAttribute(R.attr.maxTimerColor, typedValue, true)
-        limit = newCard.timeLimit()
+        limit = newCard.timeLimit(col)
         cardTimer.setOnChronometerTickListener { chronometer: Chronometer ->
             val elapsed: Long = elapsedRealTime - chronometer.base
             if (elapsed >= limit) {
-                chronometer.setTextColor(typedValue.data)
+                chronometer.setTextColor(MaterialColors.getColor(context, R.attr.maxTimerColor, 0))
                 chronometer.stop()
             }
         }
@@ -105,7 +113,7 @@ class AnswerTimer(private val cardTimer: Chronometer) {
         currentCard.stopTimer()
     }
 
-    fun resume() {
+    suspend fun resume() {
         if (!this::currentCard.isInitialized) {
             return
         }
@@ -118,9 +126,10 @@ class AnswerTimer(private val cardTimer: Chronometer) {
         }
         // Then update and resume the UI timer. Set the base time as if the timer had started
         // timeTaken() seconds ago.
-        cardTimer.base = elapsedRealTime - currentCard.timeTaken()
+        setBase(elapsedRealTime - withCol { currentCard.timeTaken(this@withCol) })
+
         // Don't start the timer if we have already reached the time limit or it will tick over
-        if (elapsedRealTime - cardTimer.base < currentCard.timeLimit()) {
+        if (elapsedRealTime - cardTimer.base < withCol { currentCard.timeLimit(this@withCol) }) {
             cardTimer.start()
         }
     }
@@ -137,5 +146,6 @@ class AnswerTimer(private val cardTimer: Chronometer) {
     private val elapsedRealTime
         get() = SystemClock.elapsedRealtime()
 
-    private fun getTheme() = context.theme
+    /** @see Chronometer.setBase */
+    private suspend fun setBase(base: Long) = withContext(Dispatchers.Main) { cardTimer.base = base }
 }

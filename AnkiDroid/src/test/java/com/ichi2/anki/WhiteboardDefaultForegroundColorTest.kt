@@ -32,6 +32,7 @@ class WhiteboardDefaultForegroundColorTest : RobolectricTest() {
     @ParameterizedRobolectricTestRunner.Parameter(1)
     @JvmField // required for Parameter
     var mExpectedResult = 0
+
     @Test
     fun testDefaultForegroundColor() {
         assertThat(foregroundColor, equalTo(mExpectedResult))
@@ -46,8 +47,6 @@ class WhiteboardDefaultForegroundColorTest : RobolectricTest() {
     companion object {
         @ParameterizedRobolectricTestRunner.Parameters
         @JvmStatic // required for initParameters
-        fun initParameters(): Collection<Array<Any>> {
-            return mutableListOf((arrayOf(true, Color.WHITE)), arrayOf(false, Color.BLACK))
-        }
+        fun initParameters(): Collection<Array<Any>> = mutableListOf((arrayOf(true, Color.WHITE)), arrayOf(false, Color.BLACK))
     }
 }

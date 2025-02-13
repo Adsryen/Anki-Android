@@ -16,7 +16,6 @@
 package com.ichi2.anki.dialogs
 
 import android.content.res.Resources
-import android.os.Message
 import com.ichi2.anki.AnkiDroidApp
 import com.ichi2.anki.analytics.AnalyticsDialogFragment
 import timber.log.Timber
@@ -28,14 +27,19 @@ abstract class AsyncDialogFragment : AnalyticsDialogFragment() {
        the onPostExecute() method of an AsyncTask */
     abstract val notificationMessage: String?
     abstract val notificationTitle: String
-    open val dialogHandlerMessage: Message? get() = null
+    open val dialogHandlerMessage: DialogHandlerMessage? get() = null
 
-    protected fun res(): Resources {
-        return try {
+    protected fun res(): Resources =
+        try {
+            resources
+        } catch (e: IllegalStateException) {
+            // Fragment SyncErrorDialog not attached to a context.
+            // this will occur when obtaining `notificationTitle`/`notificationMessage` and
+            // the app is in the background
+            Timber.i("resources failure. Likely due to app backgrounded")
             AnkiDroidApp.appResources
         } catch (e: Exception) {
-            Timber.w(e, "AnkiDroidApp.getAppResources failure. Returning Fragment resources as fallback.")
-            resources
+            Timber.w(e, "resources failure. Returning AnkiDroidApp resources as fallback.")
+            AnkiDroidApp.appResources
         }
-    }
 }

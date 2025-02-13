@@ -23,9 +23,16 @@ import android.view.ViewGroup
 import android.widget.BaseAdapter
 import android.widget.TextView
 import com.ichi2.anki.R
-import com.ichi2.libanki.Deck
+import com.ichi2.libanki.DeckNameId
 
-class DeckDropDownAdapter(private val context: Context, private val decks: List<Deck>) : BaseAdapter() {
+class DeckDropDownAdapter(
+    private val context: Context,
+    decks: List<DeckNameId>,
+) : BaseAdapter() {
+    private val deckList = decks.toMutableList()
+    val decks: List<DeckNameId>
+        get() = deckList.toList()
+
     interface SubtitleListener {
         val subtitleText: String?
     }
@@ -35,23 +42,27 @@ class DeckDropDownAdapter(private val context: Context, private val decks: List<
         var deckCountsView: TextView? = null
     }
 
-    override fun getCount(): Int {
-        return decks.size + 1
+    fun addDeck(deck: DeckNameId) {
+        deckList.add(deck)
+        notifyDataSetChanged()
     }
 
-    override fun getItem(position: Int): Any? {
-        return if (position == 0) {
+    override fun getCount(): Int = deckList.size + 1
+
+    override fun getItem(position: Int): Any? =
+        if (position == 0) {
             null
         } else {
-            decks[position + 1]
+            deckList[position + 1]
         }
-    }
 
-    override fun getItemId(position: Int): Long {
-        return position.toLong()
-    }
+    override fun getItemId(position: Int): Long = position.toLong()
 
-    override fun getView(position: Int, view: View?, parent: ViewGroup): View? {
+    override fun getView(
+        position: Int,
+        view: View?,
+        parent: ViewGroup,
+    ): View? {
         var convertView = view
         val viewHolder: DeckDropDownViewHolder
         val deckNameView: TextView?
@@ -72,15 +83,19 @@ class DeckDropDownAdapter(private val context: Context, private val decks: List<
         if (position == 0) {
             deckNameView!!.text = context.resources.getString(R.string.card_browser_all_decks)
         } else {
-            val deck = decks[position - 1]
-            val deckName = deck.getString("name")
+            val deck = deckList[position - 1]
+            val deckName = deck.name
             deckNameView!!.text = deckName
         }
         deckCountsView!!.text = (context as SubtitleListener).subtitleText
         return convertView
     }
 
-    override fun getDropDownView(position: Int, view: View?, parent: ViewGroup): View? {
+    override fun getDropDownView(
+        position: Int,
+        view: View?,
+        parent: ViewGroup,
+    ): View? {
         var convertView = view
         val deckNameView: TextView
         if (convertView == null) {
@@ -93,8 +108,8 @@ class DeckDropDownAdapter(private val context: Context, private val decks: List<
         if (position == 0) {
             deckNameView.text = context.resources.getString(R.string.card_browser_all_decks)
         } else {
-            val deck = decks[position - 1]
-            val deckName = deck.getString("name")
+            val deck = deckList[position - 1]
+            val deckName = deck.name
             deckNameView.text = deckName
         }
         return convertView

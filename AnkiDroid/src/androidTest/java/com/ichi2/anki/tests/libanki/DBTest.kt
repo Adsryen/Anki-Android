@@ -16,14 +16,13 @@
  ****************************************************************************************/
 package com.ichi2.anki.tests.libanki
 
-import android.Manifest
 import android.database.sqlite.SQLiteDatabase
 import android.database.sqlite.SQLiteDatabaseCorruptException
 import androidx.sqlite.db.SupportSQLiteDatabase
 import androidx.test.ext.junit.runners.AndroidJUnit4
-import androidx.test.rule.GrantPermissionRule
 import com.ichi2.anki.CollectionHelper
 import com.ichi2.anki.tests.InstrumentedTest
+import com.ichi2.anki.testutil.GrantStoragePermission
 import com.ichi2.libanki.DB
 import net.ankiweb.rsdroid.database.AnkiSupportSQLiteDatabase
 import org.junit.Assert
@@ -32,13 +31,12 @@ import org.junit.Test
 import org.junit.runner.RunWith
 import java.io.File
 import java.io.FileOutputStream
-import java.util.*
+import java.util.Random
 
 @RunWith(AndroidJUnit4::class)
 class DBTest : InstrumentedTest() {
     @get:Rule
-    var runtimePermissionRule: GrantPermissionRule =
-        GrantPermissionRule.grant(Manifest.permission.WRITE_EXTERNAL_STORAGE)
+    var runtimePermissionRule = GrantStoragePermission.instance
 
     @Test
     @Throws(Exception::class)
@@ -50,22 +48,23 @@ class DBTest : InstrumentedTest() {
         SQLiteDatabase.deleteDatabase(illFatedDBFile)
         Assert.assertFalse("database exists already", illFatedDBFile.exists())
         val callback = TestCallback(1)
-        val illFatedDB = DB(
-            AnkiSupportSQLiteDatabase.withFramework(
-                testContext,
-                illFatedDBFile.canonicalPath,
-                callback
+        val illFatedDB =
+            DB(
+                AnkiSupportSQLiteDatabase.withFramework(
+                    testContext,
+                    illFatedDBFile.canonicalPath,
+                    callback,
+                ),
             )
-        )
         Assert.assertFalse("database should not be corrupt yet", callback.databaseIsCorrupt)
 
         // Scribble in it
         val b = ByteArray(1024)
         Random().nextBytes(b)
-        val illFatedDBFileStream = FileOutputStream(illFatedDBFile)
-        illFatedDBFileStream.write(b, 0, 1024)
-        illFatedDBFileStream.flush()
-        illFatedDBFileStream.close()
+        FileOutputStream(illFatedDBFile).use { illFatedDBFileStream ->
+            illFatedDBFileStream.write(b, 0, 1024)
+            illFatedDBFileStream.flush()
+        }
 
         // Try to do something
         try {
@@ -83,8 +82,11 @@ class DBTest : InstrumentedTest() {
     }
 
     // Test fixture that lets us inspect corruption handler status
-    inner class TestCallback(version: Int) : AnkiSupportSQLiteDatabase.DefaultDbCallback(version) {
+    inner class TestCallback(
+        version: Int,
+    ) : AnkiSupportSQLiteDatabase.DefaultDbCallback(version) {
         internal var databaseIsCorrupt = false
+
         override fun onCorruption(db: SupportSQLiteDatabase) {
             databaseIsCorrupt = true
             super.onCorruption(db)

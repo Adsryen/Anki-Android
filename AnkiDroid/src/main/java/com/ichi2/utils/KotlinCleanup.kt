@@ -15,32 +15,26 @@
  */
 @file:KotlinCleanup(
     "Remove all TextUtils references then see if we can remove " +
-        "@RunWith(AndroidJUnit4::class) to speed up tests (if no other Android references)"
+        "@RunWith(AndroidJUnit4::class) to speed up tests (if no other Android references)",
 )
 
 package com.ichi2.utils
 
 /** Use when code can be changed after further conversion to Kotlin */
 @Target(
-    AnnotationTarget.CLASS, AnnotationTarget.FUNCTION,
-    AnnotationTarget.VALUE_PARAMETER, AnnotationTarget.EXPRESSION,
-    AnnotationTarget.FIELD, AnnotationTarget.PROPERTY, AnnotationTarget.LOCAL_VARIABLE,
-    AnnotationTarget.CONSTRUCTOR, AnnotationTarget.FILE
+    AnnotationTarget.CLASS,
+    AnnotationTarget.FUNCTION,
+    AnnotationTarget.VALUE_PARAMETER,
+    AnnotationTarget.EXPRESSION,
+    AnnotationTarget.FIELD,
+    AnnotationTarget.PROPERTY,
+    AnnotationTarget.LOCAL_VARIABLE,
+    AnnotationTarget.CONSTRUCTOR,
+    AnnotationTarget.FILE,
 )
 @Retention(AnnotationRetention.SOURCE)
 @Repeatable
 @MustBeDocumented
-annotation class KotlinCleanup(val value: String)
-
-/** This must be fixed/implemented before AnkiDroid can switch to using the new backend code
- * by default.
- */
-@Target(
-    AnnotationTarget.CLASS, AnnotationTarget.FUNCTION,
-    AnnotationTarget.VALUE_PARAMETER, AnnotationTarget.EXPRESSION,
-    AnnotationTarget.FIELD, AnnotationTarget.PROPERTY, AnnotationTarget.LOCAL_VARIABLE
+annotation class KotlinCleanup(
+    val value: String,
 )
-@Retention(AnnotationRetention.SOURCE)
-@Repeatable
-@MustBeDocumented
-annotation class BlocksSchemaUpgrade(val value: String)

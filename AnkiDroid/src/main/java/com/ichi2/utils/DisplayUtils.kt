@@ -17,17 +17,34 @@
 package com.ichi2.utils
 
 import android.content.Context
+import android.graphics.Insets
 import android.graphics.Point
+import android.os.Build
 import android.view.Window
+import android.view.WindowInsets
 import android.view.WindowManager
+import com.ichi2.anki.AnkiDroidApp
+import kotlin.math.roundToInt
 
 object DisplayUtils {
-
     @Suppress("DEPRECATION") // #9333: defaultDisplay & getSize
     fun getDisplayDimensions(wm: WindowManager): Point {
-        val display = wm.defaultDisplay
         val point = Point()
-        display.getSize(point)
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
+            val bounds = wm.currentWindowMetrics.bounds
+            val insets: Insets =
+                wm.currentWindowMetrics
+                    .getWindowInsets()
+                    .getInsetsIgnoringVisibility(
+                        WindowInsets.Type.navigationBars()
+                            or WindowInsets.Type.displayCutout(),
+                    )
+            point.x = bounds.width() - (insets.right + insets.left)
+            point.y = bounds.height() - (insets.top + insets.bottom)
+        } else {
+            val display = wm.defaultDisplay
+            display.getSize(point)
+        }
         return point
     }
 
@@ -42,4 +59,9 @@ object DisplayUtils {
     fun resizeWhenSoftInputShown(window: Window) {
         window.setSoftInputMode(WindowManager.LayoutParams.SOFT_INPUT_ADJUST_RESIZE)
     }
+}
+
+fun dpToPixels(dp: Float): Int {
+    val scale = AnkiDroidApp.instance.resources.displayMetrics.density
+    return (dp * scale).roundToInt()
 }

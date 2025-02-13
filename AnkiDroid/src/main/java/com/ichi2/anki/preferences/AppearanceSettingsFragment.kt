@@ -15,89 +15,58 @@
  */
 package com.ichi2.anki.preferences
 
+import android.content.ActivityNotFoundException
 import android.os.Build
-import android.provider.MediaStore
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.appcompat.app.AlertDialog
+import androidx.core.app.ActivityCompat
 import androidx.preference.ListPreference
 import androidx.preference.Preference
-import androidx.preference.SwitchPreference
-import com.ichi2.anki.AnkiDroidApp
-import com.ichi2.anki.CollectionHelper
+import androidx.preference.SwitchPreferenceCompat
+import anki.config.copy
+import com.ichi2.anki.CollectionManager
+import com.ichi2.anki.CollectionManager.withCol
 import com.ichi2.anki.R
-import com.ichi2.anki.UIUtils
-import com.ichi2.anki.cardviewer.GestureProcessor
-import com.ichi2.anki.reviewer.FullScreenMode
+import com.ichi2.anki.deckpicker.BackgroundImage
+import com.ichi2.anki.deckpicker.BackgroundImage.FileSizeResult
+import com.ichi2.anki.launchCatchingTask
+import com.ichi2.anki.showThemedToast
 import com.ichi2.anki.snackbar.showSnackbar
-import com.ichi2.libanki.Utils
+import com.ichi2.libanki.undoableOp
 import com.ichi2.themes.Theme
 import com.ichi2.themes.Themes
+import com.ichi2.themes.Themes.systemIsInNightMode
+import com.ichi2.themes.Themes.updateCurrentTheme
+import com.ichi2.utils.negativeButton
+import com.ichi2.utils.positiveButton
+import com.ichi2.utils.show
+import com.ichi2.utils.title
 import timber.log.Timber
-import java.io.File
-import java.io.FileInputStream
-import java.io.FileOutputStream
 
 class AppearanceSettingsFragment : SettingsFragment() {
-    private var mBackgroundImage: SwitchPreference? = null
+    private var backgroundImage: Preference? = null
     override val preferenceResource: Int
         get() = R.xml.preferences_appearance
     override val analyticsScreenNameConstant: String
         get() = "prefs.appearance"
 
     override fun initSubscreen() {
-        val col = col!!
-        // Show error toast if the user tries to disable answer button without gestures on
-        requirePreference<Preference>(R.string.answer_buttons_position_preference).setOnPreferenceChangeListener() { _, newValue: Any ->
-            val prefs = AnkiDroidApp.getSharedPrefs(requireContext())
-            if (prefs.getBoolean(GestureProcessor.PREF_KEY, false) || newValue != "none") {
-                true
-            } else {
-                // TODO add a button on the snackbar that leads directly to the
-                // Controls fragment and highlight the gesture preference
-                showSnackbar(R.string.full_screen_error_gestures)
-                false
-            }
-        }
-        requirePreference<ListPreference>(FullScreenMode.PREF_KEY).setOnPreferenceChangeListener { _, newValue: Any ->
-            val prefs = AnkiDroidApp.getSharedPrefs(requireContext())
-            if (prefs.getBoolean(GestureProcessor.PREF_KEY, false) || FullScreenMode.FULLSCREEN_ALL_GONE.getPreferenceValue() != newValue) {
-                true
-            } else {
-                // TODO add a button on the snackbar that leads directly to the
-                // Controls fragment and highlight the gesture preference
-                showSnackbar(R.string.full_screen_error_gestures)
-                false
-            }
-        }
         // Configure background
-        mBackgroundImage = requirePreference<SwitchPreference>("deckPickerBackground")
-        mBackgroundImage!!.onPreferenceClickListener = Preference.OnPreferenceClickListener {
-            if (mBackgroundImage!!.isChecked) {
+        backgroundImage = requirePreference<Preference>("deckPickerBackground")
+        backgroundImage!!.onPreferenceClickListener =
+            Preference.OnPreferenceClickListener {
                 try {
-                    mBackgroundImageResultLauncher.launch("image/*")
-                    mBackgroundImage!!.isChecked = true
-                } catch (ex: Exception) {
-                    Timber.e("%s", ex.localizedMessage)
+                    backgroundImageResultLauncher.launch("image/*")
+                } catch (ex: ActivityNotFoundException) {
+                    Timber.w("No app found to handle background preference change request")
+                    activity?.showSnackbar(R.string.activity_start_failed)
                 }
-            } else {
-                mBackgroundImage!!.isChecked = false
-                val currentAnkiDroidDirectory = CollectionHelper.getCurrentAnkiDroidDirectory(requireContext())
-                val imgFile = File(currentAnkiDroidDirectory, "DeckPickerBackground.png")
-                if (imgFile.exists()) {
-                    if (imgFile.delete()) {
-                        showSnackbar(R.string.background_image_removed)
-                    } else {
-                        showSnackbar(R.string.error_deleting_image)
-                    }
-                } else {
-                    showSnackbar(R.string.background_image_removed)
-                }
+                true
             }
-            true
-        }
 
-        val appThemePref = requirePreference<ListPreference>(getString(R.string.app_theme_key))
-        val dayThemePref = requirePreference<ListPreference>(getString(R.string.day_theme_key))
-        val nightThemePref = requirePreference<ListPreference>(getString(R.string.night_theme_key))
+        val appThemePref = requirePreference<ListPreference>(R.string.app_theme_key)
+        val dayThemePref = requirePreference<ListPreference>(R.string.day_theme_key)
+        val nightThemePref = requirePreference<ListPreference>(R.string.night_theme_key)
         val themeIsFollowSystem = appThemePref.value == Themes.FOLLOW_SYSTEM_MODE
 
         // Remove follow system options in android versions which do not have system dark mode
@@ -125,105 +94,101 @@ class AppearanceSettingsFragment : SettingsFragment() {
             if (newValue != appThemePref.value) {
                 val previousThemeId = Themes.currentTheme.id
                 appThemePref.value = newValue.toString()
-                Themes.updateCurrentTheme()
+                updateCurrentTheme(requireContext())
 
                 if (previousThemeId != Themes.currentTheme.id) {
-                    requireActivity().recreate()
+                    ActivityCompat.recreate(requireActivity())
                 }
             }
         }
 
         dayThemePref.setOnPreferenceChangeListener { newValue ->
-            if (newValue != dayThemePref.value && !Themes.systemIsInNightMode && newValue != Themes.currentTheme.id) {
-                dayThemePref.value = newValue.toString()
-                Themes.updateCurrentTheme()
-                requireActivity().recreate()
+            if (newValue != dayThemePref.value && !systemIsInNightMode(requireContext()) && newValue != Themes.currentTheme.id) {
+                ActivityCompat.recreate(requireActivity())
             }
         }
 
         nightThemePref.setOnPreferenceChangeListener { newValue ->
-            if (newValue != nightThemePref.value && Themes.systemIsInNightMode && newValue != Themes.currentTheme.id) {
-                nightThemePref.value = newValue.toString()
-                Themes.updateCurrentTheme()
-                requireActivity().recreate()
+            if (newValue != nightThemePref.value && systemIsInNightMode(requireContext()) && newValue != Themes.currentTheme.id) {
+                ActivityCompat.recreate(requireActivity())
             }
-        }
-
-        // Default font
-        requirePreference<ListPreference>(R.string.pref_default_font_key).apply {
-            entries = getCustomFonts("System default")
-            entryValues = getCustomFonts("")
-        }
-        // Browser and Note editor font
-        requirePreference<ListPreference>(R.string.pref_browser_and_editor_font_key).apply {
-            entries = getCustomFonts("System default")
-            entryValues = getCustomFonts("", useFullPath = true)
         }
 
         // Show estimate time
         // Represents the collection pref "estTime": i.e.
         // whether the buttons should indicate the duration of the interval if we click on them.
-        requirePreference<SwitchPreference>(R.string.show_estimates_preference).apply {
-            isChecked = col.get_config_boolean("estTimes")
-            setOnPreferenceChangeListener { newValue ->
-                col.set_config("estTimes", newValue)
+        requirePreference<SwitchPreferenceCompat>(R.string.show_estimates_preference).apply {
+            launchCatchingTask { isChecked = getShowIntervalOnButtons() }
+            setOnPreferenceChangeListener { _, newETA ->
+                val newETABool = newETA as? Boolean ?: return@setOnPreferenceChangeListener false
+                launchCatchingTask { setShowIntervalsOnButtons(newETABool) }
+                true
             }
         }
         // Show progress
         // Represents the collection pref "dueCounts": i.e.
         // whether the remaining number of cards should be shown.
-        requirePreference<SwitchPreference>(R.string.show_progress_preference).apply {
-            isChecked = col.get_config_boolean("dueCounts")
-            setOnPreferenceChangeListener { newValue ->
-                col.set_config("dueCounts", newValue)
+        requirePreference<SwitchPreferenceCompat>(R.string.show_progress_preference).apply {
+            launchCatchingTask { isChecked = getShowRemainingDueCounts() }
+            setOnPreferenceChangeListener { _, newDueCountsValue ->
+                val newDueCountsValueBool = newDueCountsValue as? Boolean ?: return@setOnPreferenceChangeListener false
+                launchCatchingTask { setShowRemainingDueCounts(newDueCountsValueBool) }
+                true
+            }
+        }
+
+        // Show play buttons on cards with audio
+        // Note: Stored inverted in the collection as HIDE_AUDIO_PLAY_BUTTONS
+        requirePreference<SwitchPreferenceCompat>(R.string.show_audio_play_buttons_key).apply {
+            title = CollectionManager.TR.preferencesShowPlayButtonsOnCardsWith()
+            launchCatchingTask { isChecked = !getHidePlayAudioButtons() }
+            setOnPreferenceChangeListener { _, newValue ->
+                val newValueBool = newValue as? Boolean ?: return@setOnPreferenceChangeListener false
+                launchCatchingTask { setHideAudioPlayButtons(!newValueBool) }
+                true
             }
         }
     }
 
-    /** Returns a list of the names of the installed custom fonts */
-    private fun getCustomFonts(defaultValue: String, useFullPath: Boolean = false): Array<String?> {
-        val fonts = Utils.getCustomFonts(requireContext())
-        val count = fonts.size
-        Timber.d("There are %d custom fonts", count)
-        val names = arrayOfNulls<String>(count + 1)
-        names[0] = defaultValue
-        if (useFullPath) {
-            for (index in 1 until count + 1) {
-                names[index] = fonts[index - 1].path
-                Timber.d("Adding custom font: %s", names[index])
+    private fun showRemoveBackgroundImageDialog() {
+        AlertDialog.Builder(requireContext()).show {
+            title(R.string.remove_background_image)
+            positiveButton(R.string.dialog_remove) {
+                if (BackgroundImage.remove(requireContext())) {
+                    showSnackbar(R.string.background_image_removed)
+                } else {
+                    showSnackbar(R.string.error_deleting_image)
+                }
             }
-        } else {
-            for (index in 1 until count + 1) {
-                names[index] = fonts[index - 1].name
-                Timber.d("Adding custom font: %s", names[index])
-            }
+            negativeButton(R.string.dialog_keep)
         }
-        return names
     }
 
-    private val mBackgroundImageResultLauncher = registerForActivityResult(ActivityResultContracts.GetContent()) { selectedImage ->
-        if (selectedImage != null) {
+    private val backgroundImageResultLauncher =
+        registerForActivityResult(ActivityResultContracts.GetContent()) { selectedImage ->
+            if (selectedImage == null) {
+                if (BackgroundImage.shouldBeShown(requireContext())) {
+                    showRemoveBackgroundImageDialog()
+                } else {
+                    showSnackbar(R.string.no_image_selected)
+                }
+                return@registerForActivityResult
+            }
             // handling file may result in exception
             try {
-                val filePathColumn = arrayOf(MediaStore.MediaColumns.SIZE)
-                requireContext().contentResolver.query(selectedImage, filePathColumn, null, null, null).use { cursor ->
-                    cursor!!.moveToFirst()
-                    // file size in MB
-                    val fileLength = cursor.getLong(0) / (1024 * 1024)
-                    val currentAnkiDroidDirectory = CollectionHelper.getCurrentAnkiDroidDirectory(requireContext())
-                    val imageName = "DeckPickerBackground.png"
-                    val destFile = File(currentAnkiDroidDirectory, imageName)
-                    // Image size less than 10 MB copied to AnkiDroid directory
-                    if (fileLength < 10) {
-                        (requireContext().contentResolver.openInputStream(selectedImage) as FileInputStream).channel.use { sourceChannel ->
-                            FileOutputStream(destFile).channel.use { destChannel ->
-                                destChannel.transferFrom(sourceChannel, 0, sourceChannel.size())
-                                showSnackbar(R.string.background_image_applied)
-                            }
-                        }
-                    } else {
-                        mBackgroundImage!!.isChecked = false
-                        UIUtils.showThemedToast(requireContext(), getString(R.string.image_max_size_allowed, 10), false)
+                when (val sizeResult = BackgroundImage.validateBackgroundImageFileSize(this, selectedImage)) {
+                    is FileSizeResult.FileTooLarge -> {
+                        showThemedToast(requireContext(), getString(R.string.image_max_size_allowed, sizeResult.maxMB), false)
+                    }
+                    is FileSizeResult.UncompressedBitmapTooLarge -> {
+                        showThemedToast(
+                            requireContext(),
+                            getString(R.string.image_dimensions_too_large, sizeResult.width, sizeResult.height),
+                            false,
+                        )
+                    }
+                    is FileSizeResult.OK -> {
+                        BackgroundImage.import(this, selectedImage)
                     }
                 }
             } catch (e: OutOfMemoryError) {
@@ -233,9 +198,41 @@ class AppearanceSettingsFragment : SettingsFragment() {
                 Timber.w(e)
                 showSnackbar(getString(R.string.error_selecting_image, e.localizedMessage))
             }
-        } else {
-            mBackgroundImage!!.isChecked = false
-            showSnackbar(R.string.no_image_selected)
         }
+
+    private suspend fun setShowIntervalsOnButtons(value: Boolean) {
+        val prefs = withCol { getPreferences() }
+        val newPrefs =
+            prefs.copy {
+                reviewing = reviewing.copy { showIntervalsOnButtons = value }
+            }
+        undoableOp { setPreferences(newPrefs) }
+        Timber.i("Set showIntervalsOnButtons to %b", value)
+    }
+
+    private suspend fun getShowRemainingDueCounts(): Boolean = withCol { getPreferences().reviewing.showRemainingDueCounts }
+
+    private suspend fun setShowRemainingDueCounts(value: Boolean) {
+        val prefs = withCol { getPreferences() }
+        val newPrefs =
+            prefs.copy {
+                reviewing = reviewing.copy { showRemainingDueCounts = value }
+            }
+        undoableOp { setPreferences(newPrefs) }
+        Timber.i("Set showRemainingDueCounts to %b", value)
+    }
+
+    private suspend fun setHideAudioPlayButtons(value: Boolean) {
+        val prefs = withCol { getPreferences() }
+        val newPrefs =
+            prefs.copy {
+                reviewing = reviewing.copy { hideAudioPlayButtons = value }
+            }
+        undoableOp { setPreferences(newPrefs) }
+        Timber.i("Set hideAudioPlayButtons to %b", value)
     }
 }
+
+suspend fun getShowIntervalOnButtons(): Boolean = withCol { getPreferences().reviewing.showIntervalsOnButtons }
+
+suspend fun getHidePlayAudioButtons(): Boolean = withCol { getPreferences().reviewing.hideAudioPlayButtons }

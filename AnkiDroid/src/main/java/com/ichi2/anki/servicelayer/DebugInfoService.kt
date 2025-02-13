@@ -18,64 +18,53 @@ package com.ichi2.anki.servicelayer
 
 import android.content.Context
 import android.os.Build
-import android.webkit.WebView
+import com.ichi2.anki.BuildConfig
+import com.ichi2.anki.CollectionManager
 import com.ichi2.anki.CrashReportService
-import com.ichi2.libanki.Collection
 import com.ichi2.utils.VersionUtils.pkgVersionName
-import net.ankiweb.rsdroid.BackendFactory
-import net.ankiweb.rsdroid.RustCleanup
+import com.ichi2.utils.getWebviewUserAgent
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
 import org.acra.util.Installation
 import timber.log.Timber
-import java.util.function.Supplier
+import net.ankiweb.rsdroid.BuildConfig as BackendBuildConfig
 
 object DebugInfoService {
-    @RustCleanup("remove newSchema")
-    fun getDebugInfo(info: Context, col: Supplier<Collection>): String {
-        var schedName = "Not found"
-        try {
-            schedName = col.get().sched.name
-        } catch (e: Throwable) {
-            Timber.e(e, "Sched name not found")
-        }
-        var dbV2Enabled = true
-        val webviewUserAgent = getWebviewUserAgent(info)
-        val newSchema = !BackendFactory.defaultLegacySchema
+    /**
+     * Retrieves the debug info based in different parameters of the app.
+     *
+     * Note that the `FSRS` parameter can be null if the collection doesn't exist or the config is not set.
+     */
+    suspend fun getDebugInfo(info: Context): String {
+        val webviewUserAgent = withContext(Dispatchers.Main) { getWebviewUserAgent(info) }
+        // isFSRSEnabled is null on startup
+        val isFSRSEnabled = getFSRSStatus()
         return """
-               AnkiDroid Version = $pkgVersionName
-               
-               Android Version = ${Build.VERSION.RELEASE}
-               
-               Manufacturer = ${Build.MANUFACTURER}
-               
-               Model = ${Build.MODEL}
-               
-               Hardware = ${Build.HARDWARE}
-               
-               Webview User Agent = $webviewUserAgent
-               
-               ACRA UUID = ${Installation.id(info)}
-               
-               New schema = $newSchema
-               
-               Scheduler = $schedName
-               
-               Crash Reports Enabled = ${isSendingCrashReports(info)}
-               
-               DatabaseV2 Enabled = $dbV2Enabled
-               
-        """.trimIndent()
+            AnkiDroid Version = $pkgVersionName (${BuildConfig.GIT_COMMIT_HASH})
+            Backend Version = ${BuildConfig.BACKEND_VERSION} (${BackendBuildConfig.ANKI_DESKTOP_VERSION} ${BackendBuildConfig.ANKI_COMMIT_HASH})
+            Android Version = ${Build.VERSION.RELEASE} (SDK ${Build.VERSION.SDK_INT})
+            ProductFlavor = ${BuildConfig.FLAVOR}
+            Device Info = ${Build.MANUFACTURER} | ${Build.BRAND} | ${Build.DEVICE} | ${Build.PRODUCT} | ${Build.MODEL} | ${Build.HARDWARE}
+            Webview User Agent = $webviewUserAgent
+            ACRA UUID = ${Installation.id(info)}
+            FSRS = ${BackendBuildConfig.FSRS_VERSION} (Enabled: $isFSRSEnabled)
+            Crash Reports Enabled = ${isSendingCrashReports(info)}
+            """.trimIndent()
     }
 
-    private fun getWebviewUserAgent(context: Context): String? {
-        try {
-            return WebView(context).settings.userAgentString
-        } catch (e: Throwable) {
-            CrashReportService.sendExceptionReport(e, "Info::copyDebugInfo()", "some issue occurred while extracting webview user agent")
-        }
-        return null
-    }
-
-    private fun isSendingCrashReports(context: Context): Boolean {
-        return CrashReportService.isAcraEnabled(context, false)
-    }
+    private fun isSendingCrashReports(context: Context): Boolean = CrashReportService.isAcraEnabled(context, false)
 }
+
+/**
+ * Whether the Free Spaced Repetition Scheduler is enabled
+ *
+ * Note: this can return `null` if the collection is not openable
+ */
+suspend fun getFSRSStatus(): Boolean? =
+    try {
+        CollectionManager.withOpenColOrNull { config.get<Boolean>("fsrs", false) }
+    } catch (e: Throwable) {
+        // Error and Exception paths are the same, so catch Throwable
+        Timber.w(e)
+        null
+    }

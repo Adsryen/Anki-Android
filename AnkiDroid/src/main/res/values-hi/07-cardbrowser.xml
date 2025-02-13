@@ -50,33 +50,32 @@
         <item quantity="other">%d पत्ते दिखाए गए</item>
     </plurals>
     <plurals name="card_browser_subtitle_notes_mode">
-        <item quantity="one">%d note shown</item>
-        <item quantity="other">%d notes shown</item>
+        <item quantity="one">%d नोट दिखाए जा रहे हैं</item>
+        <item quantity="other">%d नोट्स दिखाए जा रहे हैं</item>
     </plurals>
-    <string name="card_browser_all_decks">सरे डेक</string>
-    <string name="card_browser_delete_card">नोट मिटाएँ</string>
-    <string name="card_browser_suspend_card">पत्ते निलंबित करें</string>
-    <string name="card_browser_change_deck">डेक बदलें</string>
-    <string name="card_browser_unsuspend_card">पत्ते अनिलंबित करें</string>
-    <string name="card_browser_mark_card">नोट चिह्नित करें</string>
-    <string name="card_browser_unmark_card">नोट अचिह्नित करें</string>
+    <string name="card_browser_all_decks">सभी डेक्स</string>
+    <plurals name="card_browser_delete_notes">
+        <item quantity="one">नोट को हटाएँ</item>
+        <item quantity="other">नोट्स को हटाएँ</item>
+    </plurals>
+    <string name="card_browser_change_deck" maxLength="28">डेक बदलें</string>
     <string name="delete_card_title">नोट मिटाएँ?</string>
-    <string name="changed_deck_message">%s में चले गए</string>
-    <string name="card_browser_show_marked">चिह्नित नोटों को छानें</string>
-    <string name="card_browser_show_suspended">निलंबित पत्तों को छानें</string>
-    <string name="card_browser_search_by_tag">टैग से छानें</string>
-    <string name="card_browser_search_by_flag">Filter by flag</string>
-    <string name="card_browser_list_my_searches">मेरे खोज</string>
-    <string name="card_browser_list_my_searches_save">खोज सहेजें</string>
+    <string name="card_browser_show_marked" maxLength="28">चिह्नित नोटों को छानें</string>
+    <string name="card_browser_show_suspended" maxLength="28">निलंबित पत्तों को छानें</string>
+    <string name="card_browser_search_by_tag" maxLength="28">टैग से छानें</string>
+    <string name="card_browser_search_by_flag" maxLength="28">ध्वज द्वारा फ़िल्टर करें</string>
+    <string name="card_browser_list_my_searches" maxLength="28">मेरे खोज</string>
+    <string name="card_browser_list_my_searches_save" maxLength="28">खोज सहेजें</string>
     <string name="card_browser_list_my_searches_title">कोई सहेजी गई खोज चुने</string>
     <string name="card_browser_list_my_searches_new_name">वर्तमान खोज का नाम</string>
     <string name="card_browser_list_my_searches_new_search_error_empty_name">आप नाम के बिना खोज सहेज नहीं सकते</string>
     <string name="card_browser_list_my_searches_new_search_error_dup">नाम मौजूद है</string>
+    <string name="no_note_to_edit">संपादित करने के लिए कोई नोट नहीं</string>
     <string name="card_browser_list_my_searches_remove_content">\"%1$s\" को मिटाएँ?</string>
-    <string name="card_browser_change_display_order">प्रदर्शन क्रम बदलें</string>
+    <string name="card_browser_change_display_order" maxLength="28">प्रदर्शन क्रम बदलें</string>
+    <string name="card_browser_search_hint" comment="Message displayed in the search text field in the card browser.">Search</string>
+    <string name="card_browser_cram_search" maxLength="28" comment="Menu entry to start a search.">Search</string>
     <string name="card_browser_change_display_order_title">प्रदर्शन क्रम बदलें</string>
-    <string name="card_browser_change_display_order_reverse">किसी फ़ील्ड को पलटने के लिए उसे दो बार चुनें</string>
-    <string name="card_details_due" comment="Date at which a card will be due to review again.">बाकी</string>
     <string name="card_details_tags">टैग</string>
     <string-array name="card_browser_order_labels">
         <item>कोई सॉर्टिंग (तेज़)</item>
@@ -90,49 +89,33 @@
         <item>समीक्षाओं से</item>
         <item>चूकों से</item>
     </string-array>
-    <string name="card_browser_select_all">सभी चुनें</string>
-    <string name="card_browser_select_none">कोई नहीं चुनें</string>
-    <string name="card_browser_interval_new_card" comment="Message indicating that a card is currently new, and so has no interval/ease.">(नया)</string>
-    <string name="card_browser_due_filtered_card">(छाना हुआ)</string>
-    <string name="card_browser_interval_learning_card">(अध्ययन)</string>
+    <string name="card_browser_select_all" maxLength="28">सभी चुनें</string>
+    <string name="card_browser_select_none" maxLength="28">कोई नहीं चुनें</string>
     <string name="card_browser_no_cards_in_deck">‘%s’ डेक में कोई पत्ता नहीं मिला</string>
     <string name="card_browser_search_all_decks">सभी डेक में खोजें</string>
     <string name="card_browser_unknown_deck_name">अज्ञात</string>
-    <string name="card_browser_truncate" comment="allows users to show less of a field value">Truncate content</string>
+    <string name="card_browser_truncate" comment="allows users to show less of a field value">सामग्री को छोटा करें</string>
+    <string name="set_due_date_hintText" comment="plural set_due_date_label_suffix is used for parameters, parameter 1 is the plural for 0, parameter 2 is the plural for 1">आज \'0 %1$s\' है, कल \'1 %2$s\' है, आदि&#8230;</string>
     <plurals name="card_browser_export_cards">
-        <item quantity="one">Export card</item>
-        <item quantity="other">Export cards</item>
+        <item quantity="one">कार्ड निर्यात करें</item>
+        <item quantity="other">कार्ड निर्यात करें</item>
     </plurals>
     <plurals name="card_browser_export_notes">
-        <item quantity="one">Export note</item>
-        <item quantity="other">Export notes</item>
+        <item quantity="one">नोट निर्यात करें</item>
+        <item quantity="other">नोट्स निर्यात करें</item>
     </plurals>
     <plurals name="card_browser_cards_deleted">
         <item quantity="one">%d कार्ड हटाया गया</item>
         <item quantity="other">%d कार्ड हटाए गए</item>
     </plurals>
-    <!-- Card Info subscreen -->
-    <string name="card_info_added" comment="Label of the information showing at which date a card was added.">जोड़ा गया</string>
-    <string name="card_info_first_review">पहली समीक्षा</string>
-    <string name="card_info_latest_review">नवीनतम समीक्षा</string>
-    <string name="card_info_interval">Interval</string>
-    <string name="card_info_ease">आसानी</string>
-    <string name="card_info_reviews" comment="Number of times a card was reviewed">Reviews</string>
-    <string name="card_info_lapses" comment="Label indicating the number of lapses of a card.">Lapses</string>
-    <string name="card_info_average_time">Average Time</string>
-    <string name="card_info_total_time">Total Time</string>
-    <string name="card_info_card_type">कार्ड प्रकार</string>
-    <string name="card_info_note_type">नोट प्रकार</string>
-    <string name="card_info_deck_name">डेक का नाम</string>
-    <string name="card_info_card_id">कार्ड की पहचान</string>
-    <string name="card_info_note_id">नोट की पहचान</string>
-    <string name="card_info_revlog_time">समय</string>
-    <string name="card_info_revlog_date">दिनांक</string>
-    <string name="card_info_revlog_rating">Rating</string>
-    <string name="card_info_revlog_type">प्रकार</string>
-    <string name="card_info_revlog_learn" comment="Label indicating that a review in the log of a card occured while the card was in learning mode">Learn</string>
-    <string name="card_info_revlog_review">समीक्षा</string>
-    <string name="card_info_revlog_relearn" comment="Label of a log entry of a card, indicating that a review was done with a note in relearning mode">Relearn</string>
-    <string name="card_info_revlog_filtered">Filtered</string>
-    <string name="card_info_ease_not_applicable">N/A</string>
+    <!--Keyboard shortcuts dialog-->
+    <string name="edit_tags_dialog" comment="Description of the shortcut that opens the edit tags dialog">Edit tags dialog</string>
+    <string name="show_order_dialog" comment="Description of the shortcut that shows the order dialog">Show order dialog</string>
+    <!-- Manage columns dialog -->
+    <string name="browse_manage_columns_main_heading">Columns</string>
+    <string name="browse_manage_columns">Manage columns</string>
+    <string name="user_active_columns">Active</string>
+    <string name="user_potential_columns">Available</string>
+    <string name="include_column">Include column</string>
+    <string name="exclude_column">Exclude column</string>
 </resources>

@@ -51,52 +51,48 @@
     <plurals name="card_browser_subtitle_notes_mode">
         <item quantity="other">%d枚のノート</item>
     </plurals>
-    <string name="card_browser_all_decks">全てのデッキ</string>
-    <string name="card_browser_delete_card">ノートを削除</string>
-    <string name="card_browser_suspend_card">カードを保留</string>
-    <string name="card_browser_change_deck">デッキを変更</string>
-    <string name="card_browser_unsuspend_card">カードの保留を解除</string>
-    <string name="card_browser_mark_card">ノートにマーク</string>
-    <string name="card_browser_unmark_card">ノートのマークを解除</string>
+    <string name="card_browser_all_decks">すべてのデッキ</string>
+    <plurals name="card_browser_delete_notes">
+        <item quantity="other">ノートを削除</item>
+    </plurals>
+    <string name="card_browser_change_deck" maxLength="28">デッキを変更</string>
     <string name="delete_card_title">ノートの削除</string>
-    <string name="changed_deck_message">%sにカードを移動しました</string>
-    <string name="card_browser_show_marked">マーク付きカードを抽出</string>
-    <string name="card_browser_show_suspended">保留カードを抽出</string>
-    <string name="card_browser_search_by_tag">タグやカードの状態による抽出</string>
-    <string name="card_browser_search_by_flag">フラグで絞り込み</string>
-    <string name="card_browser_list_my_searches">マイ検索条件</string>
-    <string name="card_browser_list_my_searches_save">検索条件を保存</string>
-    <string name="card_browser_list_my_searches_title">保存済みの検索条件を選択する</string>
-    <string name="card_browser_list_my_searches_new_name">現在の検索条件に名前をつける</string>
-    <string name="card_browser_list_my_searches_new_search_error_empty_name">検索条件に名前をつけてください</string>
-    <string name="card_browser_list_my_searches_new_search_error_dup">同じ名前が既に存在します</string>
+    <string name="card_browser_show_marked" maxLength="28">マーク付きカードを抽出</string>
+    <string name="card_browser_show_suspended" maxLength="28">休止中カードを抽出</string>
+    <string name="card_browser_search_by_tag" maxLength="28">タグやカードの状態による抽出</string>
+    <string name="card_browser_search_by_flag" maxLength="28">フラグで抽出</string>
+    <string name="card_browser_list_my_searches" maxLength="28">マイ検索条件</string>
+    <string name="card_browser_list_my_searches_save" maxLength="28">現在の検索条件を保存</string>
+    <string name="card_browser_list_my_searches_title">保存済み検索条件を選択</string>
+    <string name="card_browser_list_my_searches_new_name">現在の検索条件に付ける名前</string>
+    <string name="card_browser_list_my_searches_new_search_error_empty_name">名前なしで検索条件を保存することはできません</string>
+    <string name="card_browser_list_my_searches_new_search_error_dup">同じ名前がすでに存在します</string>
+    <string name="no_note_to_edit">編集するノートがありません</string>
     <string name="card_browser_list_my_searches_remove_content">「%1$s」を削除しますか？</string>
-    <string name="card_browser_change_display_order">表示順を変更</string>
+    <string name="card_browser_change_display_order" maxLength="28">表示順を変更</string>
+    <string name="card_browser_search_hint" comment="Message displayed in the search text field in the card browser.">検索</string>
+    <string name="card_browser_cram_search" maxLength="28" comment="Menu entry to start a search.">検索</string>
     <string name="card_browser_change_display_order_title">表示順の選択</string>
-    <string name="card_browser_change_display_order_reverse">現在選択されている項目をタップすると、昇順 (▲)・降順 (▼) が切り替わります</string>
-    <string name="card_details_due" comment="Date at which a card will be due to review again.">期日</string>
     <string name="card_details_tags">タグ</string>
     <string-array name="card_browser_order_labels">
         <item>並び替えなし（高速）</item>
         <item>ソートフィールド順</item>
         <item>作成日時順</item>
-        <item>ノート編集日時順</item>
-        <item>カード編集日時順</item>
+        <item>ノート更新日時順</item>
+        <item>カード更新日時順</item>
         <item>学習予定日時順</item>
         <item>復習間隔順</item>
         <item>易しさ順</item>
-        <item>回答回数順</item>
-        <item>忘却回数順</item>
+        <item>学習回数順</item>
+        <item>復習での忘却回数順</item>
     </string-array>
-    <string name="card_browser_select_all">全て選択</string>
-    <string name="card_browser_select_none">選択を全て解除</string>
-    <string name="card_browser_interval_new_card" comment="Message indicating that a card is currently new, and so has no interval/ease.">(新規)</string>
-    <string name="card_browser_due_filtered_card">(フィルター)</string>
-    <string name="card_browser_interval_learning_card">(習得中)</string>
+    <string name="card_browser_select_all" maxLength="28">すべて選択</string>
+    <string name="card_browser_select_none" maxLength="28">選択をすべて解除</string>
     <string name="card_browser_no_cards_in_deck">%s のデッキにカードが見つかりませんでした</string>
     <string name="card_browser_search_all_decks">全デッキで検索</string>
     <string name="card_browser_unknown_deck_name">不明</string>
     <string name="card_browser_truncate" comment="allows users to show less of a field value">表示の切り詰め</string>
+    <string name="set_due_date_hintText" comment="plural set_due_date_label_suffix is used for parameters, parameter 1 is the plural for 0, parameter 2 is the plural for 1">「0%1$s」は今日、「1%2$s」は明日を意味します</string>
     <plurals name="card_browser_export_cards">
         <item quantity="other">カードをエクスポート</item>
     </plurals>
@@ -104,30 +100,16 @@
         <item quantity="other">ノートをエクスポート</item>
     </plurals>
     <plurals name="card_browser_cards_deleted">
-        <item quantity="other">%d 枚のカードが削除されました</item>
+        <item quantity="other">%d枚のカードを削除しました</item>
     </plurals>
-    <!-- Card Info subscreen -->
-    <string name="card_info_added" comment="Label of the information showing at which date a card was added.">作成日</string>
-    <string name="card_info_first_review">最初の学習日</string>
-    <string name="card_info_latest_review">直近の学習日</string>
-    <string name="card_info_interval">間隔</string>
-    <string name="card_info_ease">易しさ</string>
-    <string name="card_info_reviews" comment="Number of times a card was reviewed">学習回数</string>
-    <string name="card_info_lapses" comment="Label indicating the number of lapses of a card.">忘却回数</string>
-    <string name="card_info_average_time">平均タイム</string>
-    <string name="card_info_total_time">合計タイム</string>
-    <string name="card_info_card_type">カードタイプ</string>
-    <string name="card_info_note_type">ノートタイプ</string>
-    <string name="card_info_deck_name">デッキ</string>
-    <string name="card_info_card_id">カードID</string>
-    <string name="card_info_note_id">ノートID</string>
-    <string name="card_info_revlog_time">秒</string>
-    <string name="card_info_revlog_date">日時</string>
-    <string name="card_info_revlog_rating">評価</string>
-    <string name="card_info_revlog_type">種類</string>
-    <string name="card_info_revlog_learn" comment="Label indicating that a review in the log of a card occured while the card was in learning mode">習得</string>
-    <string name="card_info_revlog_review">復習</string>
-    <string name="card_info_revlog_relearn" comment="Label of a log entry of a card, indicating that a review was done with a note in relearning mode">再習得</string>
-    <string name="card_info_revlog_filtered">フィルター</string>
-    <string name="card_info_ease_not_applicable">-</string>
+    <!--Keyboard shortcuts dialog-->
+    <string name="edit_tags_dialog" comment="Description of the shortcut that opens the edit tags dialog">タグダイアログを編集</string>
+    <string name="show_order_dialog" comment="Description of the shortcut that shows the order dialog">表示順ダイアログを表示</string>
+    <!-- Manage columns dialog -->
+    <string name="browse_manage_columns_main_heading">列</string>
+    <string name="browse_manage_columns">リストの列を管理</string>
+    <string name="user_active_columns">使用中</string>
+    <string name="user_potential_columns">使用可能</string>
+    <string name="include_column">この列をブラウザのリストで使用</string>
+    <string name="exclude_column">この列をブラウザのリストから除外</string>
 </resources>

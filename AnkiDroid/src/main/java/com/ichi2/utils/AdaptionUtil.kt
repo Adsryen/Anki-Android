@@ -16,7 +16,6 @@
 package com.ichi2.utils
 
 import android.app.ActivityManager
-import android.content.ComponentName
 import android.content.ContentResolver
 import android.content.Context
 import android.content.Intent
@@ -27,12 +26,18 @@ import android.net.Uri
 import android.os.Build
 import android.provider.Settings
 import com.ichi2.anki.AnkiDroidApp
+import com.ichi2.compat.CompatHelper.Companion.getPackageInfoCompat
+import com.ichi2.compat.CompatHelper.Companion.queryIntentActivitiesCompat
+import com.ichi2.compat.MATCH_DEFAULT_ONLY
+import com.ichi2.compat.PackageInfoFlagsCompat
+import com.ichi2.compat.ResolveInfoFlagsCompat
 import timber.log.Timber
-import java.util.*
+import java.util.Locale
 
 object AdaptionUtil {
     private var sHasRunWebBrowserCheck = false
     private var sHasWebBrowser = true
+
     fun hasWebBrowser(context: Context): Boolean {
         if (sHasRunWebBrowserCheck) {
             return sHasWebBrowser
@@ -43,20 +48,22 @@ object AdaptionUtil {
     }
 
     val isUserATestClient: Boolean
-        get() = try {
-            ActivityManager.isUserAMonkey() ||
-                isRunningUnderFirebaseTestLab
-        } catch (e: Exception) {
-            Timber.w(e)
-            false
-        }
-    val isRunningUnderFirebaseTestLab: Boolean
-        get() = try {
-            isRunningUnderFirebaseTestLab(AnkiDroidApp.instance.contentResolver)
-        } catch (e: Exception) {
-            Timber.w(e)
-            false
-        }
+        get() =
+            try {
+                ActivityManager.isUserAMonkey() ||
+                    isRunningUnderFirebaseTestLab
+            } catch (e: Exception) {
+                Timber.w(e)
+                false
+            }
+    private val isRunningUnderFirebaseTestLab: Boolean
+        get() =
+            try {
+                isRunningUnderFirebaseTestLab(AnkiDroidApp.instance.contentResolver)
+            } catch (e: Exception) {
+                Timber.w(e)
+                false
+            }
 
     private fun isRunningUnderFirebaseTestLab(contentResolver: ContentResolver): Boolean {
         // https://firebase.google.com/docs/test-lab/android/android-studio#modify_instrumented_test_behavior_for
@@ -64,7 +71,6 @@ object AdaptionUtil {
         return "true" == testLabSetting
     }
 
-    @Suppress("deprecation") // queryIntentActivities
     private fun checkHasWebBrowser(context: Context): Boolean {
         // The test monkey often gets stuck on the Shared Decks WebView, ignore it as it shouldn't crash.
         if (isUserATestClient) {
@@ -72,7 +78,7 @@ object AdaptionUtil {
         }
         val intent = Intent(Intent.ACTION_VIEW, Uri.parse("http://www.google.com"))
         val pm = context.packageManager
-        val list = pm.queryIntentActivities(intent, PackageManager.MATCH_DEFAULT_ONLY)
+        val list = pm.queryIntentActivitiesCompat(intent, ResolveInfoFlagsCompat.of(MATCH_DEFAULT_ONLY.toLong()))
         for (ri in list) {
             if (!isValidBrowser(ri)) {
                 continue
@@ -96,13 +102,15 @@ object AdaptionUtil {
         return ri?.activityInfo != null && ri.activityInfo.exported
     }
 
-    @Suppress("deprecation") // getPackageInfo
-    private fun isSystemApp(packageName: String?, pm: PackageManager): Boolean {
+    private fun isSystemApp(
+        packageName: String?,
+        pm: PackageManager,
+    ): Boolean {
         return if (packageName != null) {
             try {
-                val info = pm.getPackageInfo(packageName, 0)
-                info?.applicationInfo != null &&
-                    info.applicationInfo.flags and ApplicationInfo.FLAG_SYSTEM != 0
+                val info = pm.getPackageInfoCompat(packageName, PackageInfoFlagsCompat.EMPTY) ?: return false
+                val appInfo = info.applicationInfo ?: return false
+                appInfo.flags and ApplicationInfo.FLAG_SYSTEM != 0
             } catch (e: PackageManager.NameNotFoundException) {
                 Timber.w(e)
                 false
@@ -123,47 +131,10 @@ object AdaptionUtil {
             ("Archytas".equals(Build.PRODUCT, ignoreCase = true) || "Archimedes".equals(Build.PRODUCT, ignoreCase = true))
     }
 
-    fun canUseContextMenu(): Boolean {
-        return !isRunningMiui
-    }
-
-    private val isRunningMiui by lazy {
-        val ctx: Context = AnkiDroidApp.instance
-        (
-            isIntentResolved(ctx, Intent("miui.intent.action.OP_AUTO_START").addCategory(Intent.CATEGORY_DEFAULT)) ||
-                isIntentResolved(ctx, Intent().setComponent(ComponentName("com.miui.securitycenter", "com.miui.permcenter.autostart.AutoStartManagementActivity"))) ||
-                isIntentResolved(ctx, Intent("miui.intent.action.POWER_HIDE_MODE_APP_LIST").addCategory(Intent.CATEGORY_DEFAULT)) ||
-                isIntentResolved(ctx, Intent().setComponent(ComponentName("com.miui.securitycenter", "com.miui.powercenter.PowerSettings")))
-            )
-    }
-
-    // https://stackoverflow.com/questions/47610456/how-to-detect-miui-rom-programmatically-in-android
-    @Suppress("deprecation") // resolveActivity
-    private fun isIntentResolved(ctx: Context, intent: Intent): Boolean {
-        return ctx.packageManager.resolveActivity(intent, PackageManager.MATCH_DEFAULT_ONLY) != null
-    }
-
     /** See: https://en.wikipedia.org/wiki/Vivo_(technology_company)  */
     val isVivo: Boolean
         get() {
             val manufacturer = Build.MANUFACTURER ?: return false
             return manufacturer.lowercase(Locale.ROOT) == "vivo"
-        }
-
-    /** make default HTML / JS debugging true for debug build and disable for unit/android tests
-     * isRunningAsUnitTest checks if we are in debug or testing environment by checking if org.junit.Test class
-     * is imported.
-     * https://stackoverflow.com/questions/28550370/how-to-detect-whether-android-app-is-running-ui-test-with-espresso
-     */
-    val isRunningAsUnitTest: Boolean
-        get() {
-            try {
-                Class.forName("org.junit.Test")
-            } catch (ignored: ClassNotFoundException) {
-                Timber.d("isRunningAsUnitTest: %b", false)
-                return false
-            }
-            Timber.d("isRunningAsUnitTest: %b", true)
-            return true
         }
 }

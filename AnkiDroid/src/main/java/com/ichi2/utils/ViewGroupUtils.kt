@@ -16,11 +16,11 @@
 
 package com.ichi2.utils
 
-import android.R
 import android.app.Activity
 import android.view.View
 import android.view.ViewGroup
-import com.ichi2.anki.AnkiDroidApp
+import androidx.core.view.children
+import com.ichi2.anki.preferences.sharedPrefs
 import timber.log.Timber
 import java.util.ArrayList
 
@@ -47,7 +47,7 @@ object ViewGroupUtils {
     }
 
     fun setRenderWorkaround(activity: Activity) {
-        if (AnkiDroidApp.getSharedPrefs(activity).getBoolean("softwareRender", false)) {
+        if (activity.sharedPrefs().getBoolean("softwareRender", false)) {
             Timber.i("ViewGroupUtils::setRenderWorkaround - software render requested, altering Views...")
             setContentViewLayerTypeSoftware(activity)
         } else {
@@ -62,16 +62,29 @@ object ViewGroupUtils {
      * @param activity Activity containing the View hierarchy to alter
      */
     private fun setContentViewLayerTypeSoftware(activity: Activity) {
-        val rootViewGroup = (activity.findViewById<View>(R.id.content) as ViewGroup)
-            .getChildAt(0) as ViewGroup
+        val rootViewGroup =
+            (activity.findViewById<View>(android.R.id.content) as ViewGroup)
+                .getChildAt(0) as ViewGroup
         val allViews = getAllChildrenRecursive(rootViewGroup)
         allViews.add(rootViewGroup)
         for (v in allViews) {
             Timber.d(
                 "ViewGroupUtils::setContentViewLayerTypeSoftware for view %s",
-                v.id
+                v.id,
             )
             v.setLayerType(View.LAYER_TYPE_SOFTWARE, null)
         }
+    }
+}
+
+/**
+ * Removes all children which satisfy [predicate].
+ * Errors or runtime exceptions thrown during iteration or by [predicate] are relayed to the caller.
+
+ * @param predicate a predicate which returns `true` for children to be removed.
+ */
+fun ViewGroup.removeChildren(predicate: (View) -> Boolean) {
+    children.filter(predicate).toList().forEach {
+        removeView(it)
     }
 }

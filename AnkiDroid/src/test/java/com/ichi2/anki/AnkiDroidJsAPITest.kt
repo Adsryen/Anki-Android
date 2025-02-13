@@ -19,372 +19,436 @@
 package com.ichi2.anki
 
 import androidx.test.ext.junit.runners.AndroidJUnit4
-import com.ichi2.libanki.Consts
+import com.ichi2.anki.AnkiDroidJsAPI.Companion.SUCCESS_KEY
+import com.ichi2.anki.AnkiDroidJsAPI.Companion.VALUE_KEY
+import com.ichi2.libanki.CardType
+import com.ichi2.libanki.utils.TimeManager
+import com.ichi2.utils.BASIC_MODEL_NAME
+import net.ankiweb.rsdroid.withoutUnicodeIsolation
 import org.hamcrest.CoreMatchers.equalTo
 import org.hamcrest.MatcherAssert.assertThat
 import org.json.JSONObject
-import org.junit.Assert.assertEquals
-import org.junit.Assert.assertTrue
+import org.junit.Ignore
 import org.junit.Test
 import org.junit.runner.RunWith
+import kotlin.test.assertEquals
 
 @RunWith(AndroidJUnit4::class)
 class AnkiDroidJsAPITest : RobolectricTest() {
+    @Test
+    fun ankiGetNextTimeTest() =
+        runTest {
+            val models = col.notetypes
+            val didA = addDeck("Test", setAsSelected = true)
+            val basic = models.byName(BASIC_MODEL_NAME)
+            basic!!.put("did", didA)
+            addBasicNote("foo", "bar")
+
+            val reviewer: Reviewer = startReviewer()
+            val jsapi = reviewer.jsApi
+
+            reviewer.displayCardAnswer()
+
+            waitForAsyncTasksToComplete()
+
+            assertThat(
+                getDataFromRequest("nextTime1", jsapi).withoutUnicodeIsolation(),
+                equalTo(formatApiResult("<1m")),
+            )
+            assertThat(
+                getDataFromRequest("nextTime2", jsapi).withoutUnicodeIsolation(),
+                equalTo(formatApiResult("<6m")),
+            )
+            assertThat(
+                getDataFromRequest("nextTime3", jsapi).withoutUnicodeIsolation(),
+                equalTo(formatApiResult("<10m")),
+            )
+            assertThat(
+                getDataFromRequest("nextTime4", jsapi).withoutUnicodeIsolation(),
+                equalTo(formatApiResult("4d")),
+            )
+        }
 
     @Test
-    fun initTest() {
-        val models = col.models
-        val decks = col.decks
-        val didA = addDeck("Test")
-        val basic = models.byName(AnkiDroidApp.appResources.getString(R.string.basic_model_name))
-        basic!!.put("did", didA)
-        addNoteUsingBasicModel("foo", "bar")
-        decks.select(didA)
+    fun ankiTestCurrentCard() =
+        runTest {
+            val models = col.notetypes
+            val didA = addDeck("Test", setAsSelected = true)
+            val basic = models.byName(BASIC_MODEL_NAME)
+            basic!!.put("did", didA)
+            addBasicNote("foo", "bar")
 
-        val reviewer: Reviewer = startReviewer()
-        val javaScriptFunction = reviewer.javaScriptFunction()
+            val reviewer: Reviewer = startReviewer()
+            val jsapi = reviewer.jsApi
+            reviewer.displayCardAnswer()
 
-        val data = JSONObject()
-        data.put("version", "0.0.1")
-        data.put("developer", "dev@mail.com")
+            waitForAsyncTasksToComplete()
 
-        // this will be changed when new api added
-        // TODO - make this test to auto add api from list
-        val expected = "{\"setCardDue\":true,\"suspendNote\":true,\"markCard\":true,\"suspendCard\":true,\"buryCard\":true,\"toggleFlag\":true,\"buryNote\":true}"
+            val currentCard = reviewer.currentCard!!
 
-        waitForAsyncTasksToComplete()
-        assertThat(javaScriptFunction.init(data.toString()), equalTo(expected))
-    }
+            // Card Did
+            assertThat(
+                getDataFromRequest("cardDid", jsapi),
+                equalTo(formatApiResult(currentCard.did)),
+            )
+            // Card Id
+            assertThat(
+                getDataFromRequest("cardId", jsapi),
+                equalTo(formatApiResult(currentCard.id)),
+            )
+            // Card Nid
+            assertThat(
+                getDataFromRequest("cardNid", jsapi),
+                equalTo(formatApiResult(currentCard.nid)),
+            )
+            // Card ODid
+            assertThat(
+                getDataFromRequest("cardODid", jsapi),
+                equalTo(formatApiResult(currentCard.oDid)),
+            )
+            // Card Type
+            assertThat(
+                getDataFromRequest("cardType", jsapi),
+                equalTo(formatApiResult(currentCard.type.code)),
+            )
+            // Card ODue
+            assertThat(
+                getDataFromRequest("cardODue", jsapi),
+                equalTo(formatApiResult(currentCard.oDue)),
+            )
+            // Card Due
+            assertThat(
+                getDataFromRequest("cardDue", jsapi),
+                equalTo(formatApiResult(currentCard.due)),
+            )
+            // Card Factor
+            assertThat(
+                getDataFromRequest("cardFactor", jsapi),
+                equalTo(formatApiResult(currentCard.factor)),
+            )
+            // Card Lapses
+            assertThat(
+                getDataFromRequest("cardLapses", jsapi),
+                equalTo(formatApiResult(currentCard.lapses)),
+            )
+            // Card Ivl
+            assertThat(
+                getDataFromRequest("cardInterval", jsapi),
+                equalTo(formatApiResult(currentCard.ivl)),
+            )
+            // Card mod
+            assertThat(
+                getDataFromRequest("cardMod", jsapi),
+                equalTo(formatApiResult(currentCard.mod)),
+            )
+            // Card Queue
+            assertThat(
+                getDataFromRequest("cardQueue", jsapi),
+                equalTo(formatApiResult(currentCard.queue.code)),
+            )
+            // Card Reps
+            assertThat(
+                getDataFromRequest("cardReps", jsapi),
+                equalTo(formatApiResult(currentCard.reps)),
+            )
+            // Card left
+            assertThat(
+                getDataFromRequest("cardLeft", jsapi),
+                equalTo(formatApiResult(currentCard.left)),
+            )
 
-    @Test
-    fun ankiGetNextTimeTest() {
-        val models = col.models
-        val decks = col.decks
-        val didA = addDeck("Test")
-        val basic = models.byName(AnkiDroidApp.appResources.getString(R.string.basic_model_name))
-        basic!!.put("did", didA)
-        addNoteUsingBasicModel("foo", "bar")
-        decks.select(didA)
+            // Card Flag
+            assertThat(
+                getDataFromRequest("cardFlag", jsapi),
+                equalTo(formatApiResult(0)),
+            )
+            reviewer.currentCard!!.setFlag(Flag.RED.ordinal)
+            assertThat(
+                getDataFromRequest("cardFlag", jsapi),
+                equalTo(formatApiResult(1)),
+            )
 
-        val reviewer: Reviewer = startReviewer()
-        val javaScriptFunction = reviewer.javaScriptFunction()
-
-        reviewer.displayCardAnswer()
-
-        waitForAsyncTasksToComplete()
-
-        assertThat(javaScriptFunction.ankiGetNextTime1(), equalTo("< 1 min"))
-        assertThat(javaScriptFunction.ankiGetNextTime2(), equalTo("< 6 min"))
-        assertThat(javaScriptFunction.ankiGetNextTime3(), equalTo("< 10 min"))
-        assertThat(javaScriptFunction.ankiGetNextTime4(), equalTo("4 d"))
-    }
-
-    @Test
-    fun ankiTestCurrentCard() {
-        val models = col.models
-        val decks = col.decks
-        val didA = addDeck("Test")
-        val basic = models.byName(AnkiDroidApp.appResources.getString(R.string.basic_model_name))
-        basic!!.put("did", didA)
-        addNoteUsingBasicModel("foo", "bar")
-        decks.select(didA)
-
-        val reviewer: Reviewer = startReviewer()
-        val javaScriptFunction = reviewer.javaScriptFunction()
-        reviewer.displayCardAnswer()
-
-        waitForAsyncTasksToComplete()
-
-        val currentCard = reviewer.currentCard!!
-
-        // Card Did
-        assertThat(javaScriptFunction.ankiGetCardDid(), equalTo(currentCard.did))
-        // Card Id
-        assertThat(javaScriptFunction.ankiGetCardId(), equalTo(currentCard.id))
-        // Card Nid
-        assertThat(javaScriptFunction.ankiGetCardNid(), equalTo(currentCard.nid))
-        // Card ODid
-        assertThat(javaScriptFunction.ankiGetCardODid(), equalTo(currentCard.oDid))
-        // Card Type
-        assertThat(javaScriptFunction.ankiGetCardType(), equalTo(currentCard.type))
-        // Card ODue
-        assertThat(javaScriptFunction.ankiGetCardODue(), equalTo(currentCard.oDue))
-        // Card Due
-        assertThat(javaScriptFunction.ankiGetCardDue(), equalTo(currentCard.due))
-        // Card Factor
-        assertThat(javaScriptFunction.ankiGetCardFactor(), equalTo(currentCard.factor))
-        // Card Lapses
-        assertThat(javaScriptFunction.ankiGetCardLapses(), equalTo(currentCard.lapses))
-        // Card Ivl
-        assertThat(javaScriptFunction.ankiGetCardInterval(), equalTo(currentCard.ivl))
-        // Card mod
-        assertThat(javaScriptFunction.ankiGetCardMod(), equalTo(currentCard.mod))
-        // Card Queue
-        assertThat(javaScriptFunction.ankiGetCardQueue(), equalTo(currentCard.queue))
-        // Card Reps
-        assertThat(javaScriptFunction.ankiGetCardReps(), equalTo(currentCard.reps))
-        // Card left
-        assertThat(javaScriptFunction.ankiGetCardLeft(), equalTo(currentCard.left))
-
-        // Card Flag
-        assertThat(javaScriptFunction.ankiGetCardFlag(), equalTo(0))
-        reviewer.currentCard!!.setFlag(1)
-        assertThat(javaScriptFunction.ankiGetCardFlag(), equalTo(1))
-
-        // Card Mark
-        assertThat(javaScriptFunction.ankiGetCardMark(), equalTo(false))
-        reviewer.currentCard!!.note().addTag("marked")
-        assertThat(javaScriptFunction.ankiGetCardMark(), equalTo(true))
-    }
-
-    @Test
-    fun ankiJsUiTest() {
-        val models = col.models
-        val decks = col.decks
-        val didA = addDeck("Test")
-        val basic = models.byName(AnkiDroidApp.appResources.getString(R.string.basic_model_name))
-        basic!!.put("did", didA)
-        addNoteUsingBasicModel("foo", "bar")
-        decks.select(didA)
-
-        val reviewer: Reviewer = startReviewer()
-        val javaScriptFunction = reviewer.javaScriptFunction()
-
-        waitForAsyncTasksToComplete()
-
-        // Displaying question
-        assertThat(javaScriptFunction.ankiIsDisplayingAnswer(), equalTo(reviewer.isDisplayingAnswer))
-        reviewer.displayCardAnswer()
-        assertThat(javaScriptFunction.ankiIsDisplayingAnswer(), equalTo(reviewer.isDisplayingAnswer))
-
-        // Full Screen
-        assertThat(javaScriptFunction.ankiIsInFullscreen(), equalTo(reviewer.isFullscreen))
-        // Top bar
-        assertThat(javaScriptFunction.ankiIsTopbarShown(), equalTo(reviewer.prefShowTopbar))
-        // Night Mode
-        assertThat(javaScriptFunction.ankiIsInNightMode(), equalTo(reviewer.isInNightMode))
-    }
+            // Card Mark
+            assertThat(
+                getDataFromRequest("cardMark", jsapi),
+                equalTo(formatApiResult(false)),
+            )
+            reviewer.currentCard!!.note().addTag("marked")
+            assertThat(
+                getDataFromRequest("cardMark", jsapi),
+                equalTo(formatApiResult(true)),
+            )
+        }
 
     @Test
-    fun ankiMarkAndFlagCardTest() {
-        // js api test for marking and flagging card
-        val models = col.models
-        val decks = col.decks
-        val didA = addDeck("Test")
-        val basic = models.byName(AnkiDroidApp.appResources.getString(R.string.basic_model_name))
-        basic!!.put("did", didA)
-        addNoteUsingBasicModel("foo", "bar")
-        decks.select(didA)
+    fun ankiJsUiTest() =
+        runTest {
+            val models = col.notetypes
+            val didA = addDeck("Test", setAsSelected = true)
+            val basic = models.byName(BASIC_MODEL_NAME)
+            basic!!.put("did", didA)
+            addBasicNote("foo", "bar")
 
-        val reviewer: Reviewer = startReviewer()
-        val javaScriptFunction = reviewer.javaScriptFunction()
+            val reviewer: Reviewer = startReviewer()
+            val jsapi = reviewer.jsApi
 
-        waitForAsyncTasksToComplete()
+            waitForAsyncTasksToComplete()
 
-        // ---------------
-        // Card mark test
-        // ---------------
-        // Before marking card
-        assertThat(javaScriptFunction.ankiGetCardMark(), equalTo(false))
+            // Displaying question
+            assertThat(
+                getDataFromRequest("isDisplayingAnswer", jsapi),
+                equalTo(formatApiResult(reviewer.isDisplayingAnswer)),
+            )
+            reviewer.displayCardAnswer()
+            assertThat(
+                getDataFromRequest("isDisplayingAnswer", jsapi),
+                equalTo(formatApiResult(reviewer.isDisplayingAnswer)),
+            )
 
-        // call javascript function defined in card.js to mark card
-        var markCardJs = "javascript:(function () {\n"
-
-        // add js api developer contract
-        markCardJs += "var jsApi = {\"version\" : \"0.0.1\", \"developer\" : \"dev@mail.com\"};\n"
-
-        // init JS API
-        markCardJs += "AnkiDroidJS.init(JSON.stringify(jsApi));\n"
-
-        // call function defined in card.js to mark card
-        markCardJs += "ankiMarkCard();\n"
-
-        // get card mark status for test
-        markCardJs += "AnkiDroidJS.ankiGetCardMark();\n" +
-            "})();"
-
-        reviewer.webView!!.evaluateJavascript(markCardJs) { s -> assertThat(s, equalTo(true)) }
-
-        // ---------------
-        // Card flag test
-        // ---------------
-        // before toggling flag
-        assertThat(javaScriptFunction.ankiGetCardFlag(), equalTo(0))
-
-        // call javascript function defined in card.js to toggle flag
-        var flagCardJs = "javascript:(function () {\n"
-
-        // add js api developer contract
-        flagCardJs += "var jsApi = {\"version\" : \"0.0.1\", \"developer\" : \"test@example.com\"};\n"
-
-        // init JS API
-        flagCardJs += "AnkiDroidJS.init(JSON.stringify(jsApi));\n"
-
-        // call function defined in card.js to flag card to red
-        flagCardJs += "ankiToggleFlag(\"red\");\n"
-
-        // get flag status for test
-        flagCardJs += "AnkiDroidJS.ankiGetCardFlag();\n" +
-            "})();"
-
-        reviewer.webView!!.evaluateJavascript(flagCardJs) { s -> assertThat(s, equalTo(1)) }
-    }
-
-    fun ankiBurySuspendTest() {
-        // js api test for bury and suspend notes and cards
-        // add five notes, four will be buried and suspended
-        // count number of notes, if buried or suspended then
-        // in scheduling the count will be less than previous scheduling
-        val models = col.models
-        val decks = col.decks
-        val didA = addDeck("Test")
-        val basic = models.byName(AnkiDroidApp.appResources.getString(R.string.basic_model_name))
-        basic!!.put("did", didA)
-        addNoteUsingBasicModel("foo", "bar")
-        addNoteUsingBasicModel("baz", "bak")
-        addNoteUsingBasicModel("Anki", "Droid")
-        addNoteUsingBasicModel("Test Card", "Bury and Suspend Card")
-        addNoteUsingBasicModel("Test Note", "Bury and Suspend Note")
-        decks.select(didA)
-
-        val reviewer: Reviewer = startReviewer()
-
-        waitForAsyncTasksToComplete()
-
-        // ----------
-        // Bury Card
-        // ----------
-        var jsScript = createTestScript("AnkiDroidJS.ankiBuryCard();")
-        // call script to bury current card
-        reviewer.webView!!.evaluateJavascript(jsScript) { s -> assertThat(s, equalTo(true)) }
-
-        // count number of notes
-        assertThat(reviewer.sched!!.cardCount(), equalTo(4))
-
-        // ----------
-        // Bury Note
-        // ----------
-        jsScript = createTestScript("AnkiDroidJS.ankiBuryNote();")
-        // call script to bury current note
-        reviewer.webView!!.evaluateJavascript(jsScript) { s -> assertThat(s, equalTo(true)) }
-
-        // count number of notes
-        assertThat(reviewer.sched!!.cardCount(), equalTo(3))
-
-        // -------------
-        // Suspend Card
-        // -------------
-        jsScript = createTestScript("AnkiDroidJS.ankiSuspendCard();")
-        // call script to suspend current card
-        reviewer.webView!!.evaluateJavascript(jsScript) { s -> assertThat(s, equalTo(true)) }
-
-        // count number of notes
-        assertThat(reviewer.sched!!.cardCount(), equalTo(2))
-
-        // -------------
-        // Suspend Note
-        // -------------
-        jsScript = createTestScript("AnkiDroidJS.ankiSuspendNote();")
-        // call script to suspend current note
-        reviewer.webView!!.evaluateJavascript(jsScript) { s -> assertThat(s, equalTo(true)) }
-
-        // count number of notes
-        assertThat(reviewer.sched!!.cardCount(), equalTo(1))
-    }
-
-    private fun createTestScript(apiName: String): String {
-        // create js script for evaluating in webview
-        var script = "javascript:(function () {\n"
-
-        // add js api developer contract
-        script += "var jsApi = {\"version\" : \"0.0.1\", \"developer\" : \"test@example.com\"};\n"
-
-        // init JS API
-        script += "AnkiDroidJS.init(JSON.stringify(jsApi));\n"
-
-        // call js api
-        script += "$apiName\n})();"
-
-        return script
-    }
-
-    private fun startReviewer(): Reviewer {
-        return ReviewerTest.startReviewer(this)
-    }
+            // Full Screen
+            assertThat(
+                getDataFromRequest("isInFullscreen", jsapi),
+                equalTo(formatApiResult(reviewer.isFullscreen)),
+            )
+            // Top bar
+            assertThat(
+                getDataFromRequest("isTopbarShown", jsapi),
+                equalTo(formatApiResult(reviewer.prefShowTopbar)),
+            )
+            // Night Mode
+            assertThat(
+                getDataFromRequest("isInNightMode", jsapi),
+                equalTo(formatApiResult(reviewer.isInNightMode)),
+            )
+        }
 
     @Test
-    fun ankiSetCardDueTest() {
-        val models = col.models
-        val decks = col.decks
-        val didA = addDeck("Test")
-        val basic = models.byName(AnkiDroidApp.appResources.getString(R.string.basic_model_name))
-        basic!!.put("did", didA)
-        addNoteUsingBasicModel("foo", "bar")
-        addNoteUsingBasicModel("baz", "bak")
-        decks.select(didA)
+    fun ankiMarkAndFlagCardTest() =
+        runTest {
+            // js api test for marking and flagging card
+            val models = col.notetypes
+            val didA = addDeck("Test", setAsSelected = true)
+            val basic = models.byName(BASIC_MODEL_NAME)
+            basic!!.put("did", didA)
+            addBasicNote("foo", "bar")
 
-        val reviewer: Reviewer = startReviewer()
-        waitForAsyncTasksToComplete()
+            val reviewer: Reviewer = startReviewer()
+            val jsapi = reviewer.jsApi
 
-        val javaScriptFunction = reviewer.javaScriptFunction()
-        // init js api
-        javaScriptFunction.init(initJsApiContract())
-        // get card id for testing due
-        val cardId = javaScriptFunction.ankiGetCardId()
+            waitForAsyncTasksToComplete()
 
-        // test that card rescheduled for 15 days interval and returned true
-        assertTrue("Card rescheduled, so returns true", javaScriptFunction.ankiSetCardDue(15))
-        waitForAsyncTasksToComplete()
+            // ---------------
+            // Card mark test
+            // ---------------
+            // Before marking card
+            assertThat(
+                getDataFromRequest("cardMark", jsapi),
+                equalTo(formatApiResult(false)),
+            )
 
-        // verify that it did get rescheduled
-        // --------------------------------
-        val cardAfterRescheduleCards = col.getCard(cardId)
-        assertEquals("Card is rescheduled", 15, cardAfterRescheduleCards.due)
-    }
+            // Mark card
+            assertThat(
+                getDataFromRequest("markCard", jsapi, "true"),
+                equalTo(formatApiResult(true)),
+            )
 
-    private fun initJsApiContract(): String {
-        val data = JSONObject()
-        data.put("version", "0.0.1")
-        data.put("developer", "test@example.com")
-        return data.toString()
-    }
+            // After marking card
+            assertThat(
+                getDataFromRequest("cardMark", jsapi),
+                equalTo(formatApiResult(true)),
+            )
+
+            // ---------------
+            // Card flag test
+            // ---------------
+            // before toggling flag
+            assertThat(
+                getDataFromRequest("cardFlag", jsapi),
+                equalTo(formatApiResult(0)),
+            )
+
+            // call javascript function to toggle flag
+            assertThat(
+                getDataFromRequest("toggleFlag", jsapi, "red"),
+                equalTo(formatApiResult(true)),
+            )
+
+            // after toggling flag
+            assertThat(
+                getDataFromRequest("cardFlag", jsapi),
+                equalTo(formatApiResult(1)),
+            )
+        }
+
+    @Ignore("the test need to be updated")
+    fun ankiBurySuspendTest() =
+        runTest {
+            // js api test for bury and suspend notes and cards
+            // add five notes, four will be buried and suspended
+            // count number of notes, if buried or suspended then
+            // in scheduling the count will be less than previous scheduling
+            val models = col.notetypes
+            val didA = addDeck("Test", setAsSelected = true)
+            val basic = models.byName(BASIC_MODEL_NAME)
+            basic!!.put("did", didA)
+            addBasicNote("foo", "bar")
+            addBasicNote("baz", "bak")
+            addBasicNote("Anki", "Droid")
+            addBasicNote("Test Card", "Bury and Suspend Card")
+            addBasicNote("Test Note", "Bury and Suspend Note")
+
+            val reviewer: Reviewer = startReviewer()
+            val jsapi = reviewer.jsApi
+
+            // ----------
+            // Bury Card
+            // ----------
+            // call script to bury current card
+            assertThat(
+                getDataFromRequest("buryCard", jsapi),
+                equalTo(formatApiResult(true)),
+            )
+
+            // count number of notes
+            val sched = reviewer.getColUnsafe
+            assertThat(sched.cardCount(), equalTo(4))
+
+            // ----------
+            // Bury Note
+            // ----------
+            // call script to bury current note
+            assertThat(
+                getDataFromRequest("buryNote", jsapi),
+                equalTo(formatApiResult(true)),
+            )
+
+            // count number of notes
+            assertThat(sched.cardCount(), equalTo(3))
+
+            // -------------
+            // Suspend Card
+            // -------------
+            // call script to suspend current card
+            assertThat(
+                getDataFromRequest("suspendCard", jsapi),
+                equalTo(formatApiResult(true)),
+            )
+
+            // count number of notes
+            assertThat(sched.cardCount(), equalTo(2))
+
+            // -------------
+            // Suspend Note
+            // -------------
+            // call script to suspend current note
+            assertThat(
+                getDataFromRequest("suspendNote", jsapi),
+                equalTo(formatApiResult(true)),
+            )
+
+            // count number of notes
+            assertThat(sched.cardCount(), equalTo(1))
+        }
+
+    private fun startReviewer(): Reviewer = ReviewerTest.startReviewer(this)
 
     @Test
-    fun ankiResetProgressTest() {
-        val n = addNoteUsingBasicModel("Front", "Back")
-        val c = n.firstCard()
+    fun ankiSetCardDueTest() =
+        runTest {
+            TimeManager.reset()
+            val models = col.notetypes
+            val didA = addDeck("Test", setAsSelected = true)
+            val basic = models.byName(BASIC_MODEL_NAME)
+            basic!!.put("did", didA)
+            addBasicNote("foo", "bar")
+            addBasicNote("baz", "bak")
 
-        // Make card review with 28L due and 280% ease
-        c.type = Consts.CARD_TYPE_REV
-        c.due = 28L
-        c.factor = 2800
-        c.ivl = 8
+            val reviewer: Reviewer = startReviewer()
+            waitForAsyncTasksToComplete()
 
-        // before reset
-        assertEquals("Card due before reset", 28L, c.due)
-        assertEquals("Card interval before reset", 8, c.ivl)
-        assertEquals("Card ease before reset", 2800, c.factor)
-        assertEquals("Card type before reset", Consts.CARD_TYPE_REV, c.type)
+            val jsapi = reviewer.jsApi
+            // get card id for testing due
+            val cardIdRes = getDataFromRequest("cardId", jsapi)
+            val jsonObject = JSONObject(cardIdRes)
+            val cardId = jsonObject.get(VALUE_KEY).toString().toLong()
 
-        val reviewer: Reviewer = startReviewer()
-        waitForAsyncTasksToComplete()
+            // test that card rescheduled for 15 days interval and returned true
+            assertThat(getDataFromRequest("setCardDue", jsapi, "15"), equalTo(formatApiResult(true)))
+            waitForAsyncTasksToComplete()
 
-        val javaScriptFunction = reviewer.javaScriptFunction()
-        // init js api
-        javaScriptFunction.init(initJsApiContract())
-        // get card id for testing due
-        val cardId = javaScriptFunction.ankiGetCardId()
+            // verify that it did get rescheduled
+            // --------------------------------
+            val cardToBeReschedule = col.getCard(cardId)
+            assertEquals(15 + col.sched.today, cardToBeReschedule.due, "Card is rescheduled")
+        }
 
-        // test that card reset
-        assertTrue("Card progress reset", javaScriptFunction.ankiResetProgress())
-        waitForAsyncTasksToComplete()
+    @Test
+    fun ankiResetProgressTest() =
+        runTest {
+            val n = addBasicNote("Front", "Back")
+            val c = n.firstCard()
 
-        // verify that card progress reset
-        // --------------------------------
-        val cardAfterReset = col.getCard(cardId)
-        assertEquals("Card due after reset", 1, cardAfterReset.due)
-        assertEquals("Card interval after reset", 0, cardAfterReset.ivl)
-        assertEquals("Card ease after reset", 2500, cardAfterReset.factor)
-        assertEquals("Card type after reset", Consts.CARD_TYPE_NEW, cardAfterReset.type)
+            // Make card review with 28L due and 280% ease
+            c.type = CardType.Rev
+            c.due = 28
+            c.factor = 2800
+            c.ivl = 8
+
+            // before reset
+            assertEquals(28, c.due, "Card due before reset")
+            assertEquals(8, c.ivl, "Card interval before reset")
+            assertEquals(2800, c.factor, "Card ease before reset")
+            assertEquals(CardType.Rev, c.type, "Card type before reset")
+
+            val reviewer: Reviewer = startReviewer()
+            waitForAsyncTasksToComplete()
+
+            val jsapi = reviewer.jsApi
+
+            // test that card reset
+            assertThat(getDataFromRequest("resetProgress", jsapi), equalTo(formatApiResult(true)))
+            waitForAsyncTasksToComplete()
+
+            // verify that card progress reset
+            // --------------------------------
+            val cardAfterReset = col.getCard(reviewer.currentCard!!.id)
+            assertEquals(2, cardAfterReset.due, "Card due after reset")
+            assertEquals(0, cardAfterReset.ivl, "Card interval after reset")
+            assertEquals(CardType.New, cardAfterReset.type, "Card type after reset")
+        }
+
+    companion object {
+        fun jsApiContract(data: String = ""): ByteArray =
+            JSONObject()
+                .apply {
+                    put("version", "0.0.3")
+                    put("developer", "test@example.com")
+                    put("data", data)
+                }.toString()
+                .toByteArray()
+
+        private inline fun formatSuccessfulApiResult(block: JSONObject.() -> Unit) =
+            JSONObject()
+                .apply {
+                    put(SUCCESS_KEY, true)
+                    block(this)
+                }.toString()
+
+        fun formatApiResult(res: Boolean) = formatSuccessfulApiResult { put(VALUE_KEY, res) }
+
+        fun formatApiResult(res: Int) = formatSuccessfulApiResult { put(VALUE_KEY, res) }
+
+        fun formatApiResult(res: Long) = formatSuccessfulApiResult { put(VALUE_KEY, res) }
+
+        fun formatApiResult(res: String) = formatSuccessfulApiResult { put(VALUE_KEY, res) }
+
+        suspend fun getDataFromRequest(
+            methodName: String,
+            jsAPI: AnkiDroidJsAPI,
+            apiData: String = "",
+        ): String =
+            jsAPI
+                .handleJsApiRequest(methodName, jsApiContract(apiData), false)
+                .decodeToString()
     }
 }

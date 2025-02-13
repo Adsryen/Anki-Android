@@ -16,7 +16,6 @@
 
 package com.ichi2.libanki
 
-import androidx.annotation.CheckResult
 import com.ichi2.utils.deepClonedInto
 import org.json.JSONObject
 
@@ -38,21 +37,36 @@ class Deck : JSONObject {
      */
     constructor(json: String) : super(json)
 
-    /**
-     * Creates a new empty deck object
-     */
-    private constructor() : super()
+    val isFiltered: Boolean
+        get() = getInt("dyn") != 0
 
-    @CheckResult
-    fun deepClone(): Deck {
-        val clone = Deck()
-        return deepClonedInto(clone)
-    }
+    val isNormal: Boolean
+        get() = !isFiltered
 
-    val isDyn: Boolean
-        get() = getInt("dyn") == Consts.DECK_DYN
-    val isStd: Boolean
-        get() = getInt("dyn") == Consts.DECK_STD
-    val id: DeckId
+    var name: String
+        get() = getString("name")
+        set(value) {
+            put("name", value)
+        }
+
+    var collapsed: Boolean
+        get() = getBoolean("collapsed")
+        set(value) {
+            put("collapsed", value)
+        }
+
+    var id: DeckId
         get() = getLong("id")
+        set(value) {
+            put("id", value)
+        }
+
+    var conf: Long
+        get() {
+            val value = optLong("conf")
+            return if (value > 0) value else 1
+        }
+        set(value) {
+            put("conf", value)
+        }
 }
